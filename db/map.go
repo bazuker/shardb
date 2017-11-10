@@ -8,6 +8,10 @@ import (
 	"errors"
 	"github.com/rs/xid"
 	"math/rand"
+	"io/ioutil"
+	"compress/gzip"
+	"bytes"
+	"bufio"
 )
 
 var SHARD_COUNT = 32
@@ -17,48 +21,42 @@ var SHARD_COUNT = 32
 
 type ConcurrentMap struct {
 	Shared  []*ConcurrentMapShared
-	counter uint64
-	mx sync.Mutex
-}
 
-// A "thread" safe string to anything map.
-type ConcurrentMapShared struct {
-	id			 int
-	Items        map[string]interface{}
-	file		 *os.File
-	sync.RWMutex // Read Write mutex, guards access to internal map.
+	counter   uint64
+	counterMx sync.Mutex
+	SyncDestination string
 }
 
 type ShardOffset struct {
-	start int64
-	length int
+	Start  int64 `json:"s"`
+	Length int	 `json:"l"`
 }
 
-//! Not intended to be used in production environment
-func (shard *ConcurrentMapShared) GetRandomItem() (string, interface{}) {
-	return shard.GetItemWithNumber(rand.Intn(len(shard.Items)))
+func (cm *ConcurrentMap) GetRandomShard() *ConcurrentMapShared {
+	return cm.Shared[rand.Intn(len(cm.Shared))]
 }
-//! Not intended to be used in production environment
-func (shard *ConcurrentMapShared) GetItemWithNumber(n int) (string, interface{}) {
-	i := 0
-	for k, v := range shard.Items {
-		if i >= n {
-			return k, v
+
+func (cm *ConcurrentMap) Sync() (err error) {
+	for _, shard := range cm.Shared {
+		err = shard.Sync()
+		if err != nil {
+			return err
 		}
-		i++
 	}
-	return "", nil
-}
+	cm.counterMx.Lock()
+	err = ioutil.WriteFile(cm.SyncDestination + "/map_index.json",
+		[]byte(strconv.FormatUint(cm.counter, 10)), os.ModePerm)
+	cm.counterMx.Unlock()
 
-func (shard *ConcurrentMapShared) GetItem(id string) interface{} {
-	return shard.Items[id]
+	return err
 }
 
 // Creates a new concurrent map.
-func NewConcurrentMap(files []*os.File) *ConcurrentMap {
-	m := &ConcurrentMap{make([]*ConcurrentMapShared, SHARD_COUNT), 0, sync.Mutex{}}
+func NewConcurrentMap(syncDest string, files []*os.File) *ConcurrentMap {
+	m := &ConcurrentMap{make([]*ConcurrentMapShared, SHARD_COUNT),
+	0, sync.Mutex{}, syncDest}
 	for i := 0; i < SHARD_COUNT; i++ {
-		m.Shared[i] = &ConcurrentMapShared{id: i, Items: make(map[string]interface{}), file: files[i]}
+		m.Shared[i] = NewConcurrentMapShared(syncDest, i, files[i])
 	}
 	return m
 }
@@ -69,8 +67,8 @@ func (m *ConcurrentMap) GetShard(key string) *ConcurrentMapShared {
 }
 
 func (m *ConcurrentMap) GetNextShard() *ConcurrentMapShared {
-	m.mx.Lock()
-	defer m.mx.Unlock()
+	m.counterMx.Lock()
+	defer m.counterMx.Unlock()
 
 	m.counter++
 	if m.counter >= 32 {
@@ -92,10 +90,10 @@ func (m *ConcurrentMap) FindById(shard *ConcurrentMapShared, key string, id stri
 	shard.RLock()
 	defer shard.RUnlock()
 
-	if item, ok := shard.Items[key + ":id:" + id]; ok {
+	if item, ok := shard.Items[key + ":Id:" + id]; ok {
 		offset := item.(ShardOffset)
-		data := make([]byte, offset.length)
-		_, err := shard.file.ReadAt(data, offset.start)
+		data := make([]byte, offset.Length)
+		_, err := shard.file.ReadAt(data, offset.Start)
 		if err != nil {
 			return nil, err
 		}
@@ -105,7 +103,7 @@ func (m *ConcurrentMap) FindById(shard *ConcurrentMapShared, key string, id stri
 }
 
 // Sets the given value under the specified key.
-// return shard id, object id
+// return shard Id, object Id
 func (m *ConcurrentMap) Set(key string, indexData []IndexData, value interface{}) (int, string, error) {
 	// Get map shard.
 	shard := m.GetNextShard()
@@ -114,7 +112,7 @@ func (m *ConcurrentMap) Set(key string, indexData []IndexData, value interface{}
 
 	idStr := xid.New().String()
 	// Marshal the payload
-	data, err := json.Marshal(Element{idStr, value})
+	jData, err := json.Marshal(Element{idStr, value})
 	if err != nil {
 		return -1, "", err
 	}
@@ -124,7 +122,11 @@ func (m *ConcurrentMap) Set(key string, indexData []IndexData, value interface{}
 	if err != nil {
 		return -1, "", err
 	}
-
+	var b bytes.Buffer
+	w := gzip.NewWriterLevel(bufio.NewWriter(&b), gzip.BestSpeed)
+	line := []byte("\")
+	data := make([]byte, len(jData) + len())
+	w.Write(data + []byte("string"))
 	n, err := shard.file.WriteString(string(data) + "\n")
 	if err != nil {
 		return -1, "", err
@@ -133,7 +135,7 @@ func (m *ConcurrentMap) Set(key string, indexData []IndexData, value interface{}
 	// Write Id index if other indexes were not provided
 	offset := ShardOffset{ret, n}
 	if indexData == nil {
-		shard.Items[key + ":id:" + idStr] = offset
+		shard.Items[key + ":Id:" + idStr] = &offset
 	} else {
 		// Or walk through the provided indexes otherwise
 		for _, ix := range indexData {
@@ -148,17 +150,16 @@ func (m *ConcurrentMap) Set(key string, indexData []IndexData, value interface{}
 					break
 				}
 			}
-			shard.Items[lastAvailable] = offset
+			shard.Items[lastAvailable] = &offset
 		}
 	}
 
-	return shard.id, idStr, nil
+	return shard.Id, idStr, nil
 }
 
 // Callback to return new element to be inserted into the map
 // It is called while lock is held, therefore it MUST NOT
 // try to access other keys in same map, as it can lead to deadlock since
-// Go sync.RWLock is not reentrant
 type UpsertCb func(exist bool, valueInMap interface{}, newValue interface{}) interface{}
 
 // Insert or Update - updates existing element or inserts a new one using UpsertCb
@@ -334,11 +335,11 @@ func fanIn(chans []chan Tuple, out chan Tuple) {
 	close(out)
 }
 
-// Returns all items as map[string]interface{}
+// Returns all Items as map[string]interface{}
 func (m *ConcurrentMap) Items() map[string]interface{} {
 	tmp := make(map[string]interface{})
 
-	// Insert items to temporary map.
+	// Insert Items to temporary map.
 	for item := range m.IterBuffered() {
 		tmp[item.Key] = item.Val
 	}
@@ -401,7 +402,7 @@ func (m *ConcurrentMap) Keys() []string {
 	// Create a temporary map, which will hold all item spread across shards.
 	tmp := make(map[string]interface{})
 
-	// Insert items to temporary map.
+	// Insert Items to temporary map.
 	for item := range m.IterBuffered() {
 		tmp[item.Key] = item.Val
 	}

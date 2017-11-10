@@ -6,7 +6,6 @@ import (
 	"math/rand"
 	"sync"
 	"time"
-	"strings"
 )
 
 var (
@@ -32,19 +31,19 @@ func checkErr(err error) {
 
 func fillUp() {
 	c := database.GetCollection("c1")
-	c.Write(Person{RandStringBytes(10), RandStringBytes(10), 20})
+	c.Write(Person{RandStringBytes(10), RandStringBytes(10)})
 	wg.Done()
 }
 
 func main() {
 	database = db.NewDatabase("test")
 	start := time.Now()
-	err := database.ScanAndLoadData()
+	/*err := database.ScanAndLoadData()
 	if err != nil {
-		panic(err)
+		fmt.Println("Failed to scan and load the data")
 	}
 
-	fmt.Println("After loading attempt database contains", database.GetCollectionsCount(), "collections")
+	fmt.Println("After loading attempt database contains", database.GetCollectionsCount(), "collections")*/
 
 	if database.GetCollectionsCount() <= 0 {
 		start := time.Now()
@@ -96,9 +95,12 @@ func main() {
 		fmt.Println("Database loading took", time.Now().Sub(start))
 	}
 
-	defer database.Sync()
+	err := database.Sync()
+	if err != nil {
+		panic(err)
+	}
 
-	fmt.Println("Database now contains", database.GetTotalObjectsCount(), "objects")
+	/*fmt.Println("Database now contains", database.GetTotalObjectsCount(), "objects")
 
 	someId, _, err := database.GetRandomAliveObject()
 	if err != nil {
@@ -114,5 +116,5 @@ func main() {
 	fmt.Println("RESULT", data.Payload.(map[string]interface{})["FirstName"])
 
 	fmt.Print("Press enter to exit...")
-	fmt.Scanln()
+	fmt.Scanln()*/
 }

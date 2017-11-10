@@ -9,14 +9,15 @@ import (
 	"io/ioutil"
 	"strings"
 	"encoding/json"
+	"log"
 )
 
 const COLLECTION_DIR_NAME = "collections"
 
 type Database struct {
 	Name            string
-	collections     map[string]*Collection
-	collectionMutex sync.RWMutex
+	collections     map[string]*Collection	`json:"-"`
+	collectionMutex sync.RWMutex			`json:"-"`
 }
 
 func NewDatabase(name string) *Database {
@@ -74,7 +75,7 @@ func (db *Database) ScanAndLoadData() error {
 
 			db.collectionMutex.Lock()
 
-			db.collections[c.Name()] = NewCollection(c.Name(), files, createUniqueIdIndex(), make(map[string]int))
+			db.collections[c.Name()] = NewCollection(collectionPath, c.Name(), files, createUniqueIdIndex(), make(map[string]int))
 			db.collectionMutex.Unlock()
 
 			if loaded < cfLen {
@@ -87,10 +88,22 @@ func (db *Database) ScanAndLoadData() error {
 }
 
 func (db *Database) Sync() error {
-	data, err := json.Marshal(db.collections)
+	db.collectionMutex.RLock()
+	for _, c := range db.collections {
+		//go func() {
+			err := c.Sync()
+			if err != nil {
+				log.Println("Collection " + c.Name + " syncronization failed:", err.Error())
+			}
+		//}()
+	}
+	db.collectionMutex.RUnlock()
+
+	data, err := json.Marshal(db)
 	if err != nil {
 		return err
 	}
+
 	return ioutil.WriteFile(db.Name + ".shardb", data, os.ModePerm)
 }
 
@@ -134,8 +147,7 @@ func (db *Database) GetRandomAliveObject() (string, interface{}, error) {
 	if shard == nil {
 		return "", nil, errors.New("collections does not have any shards")
 	}
-	id, elem := shard.GetRandomItem()
-	return id, elem, nil
+	return shard.GetRandomItem()
 }
 
 func (db *Database) AddCollection(name string) error {
@@ -155,7 +167,7 @@ func (db *Database) AddCollection(name string) error {
 	}
 
 	db.collectionMutex.Lock()
-	db.collections[name] = NewCollection(name, files, createUniqueIdIndex(), make(map[string]int))
+	db.collections[name] = NewCollection(path, name, files, createUniqueIdIndex(), make(map[string]int))
 	db.collectionMutex.Unlock()
 
 	return nil

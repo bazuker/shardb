@@ -3,9 +3,9 @@ package db
 import (
 	"encoding/json"
 	"sync"
-	"math/rand"
 	"sync/atomic"
 	"os"
+	"io/ioutil"
 )
 
 type Index struct {
@@ -20,13 +20,14 @@ type IndexData struct {
 
 type Collection struct {
 	Name              string
-	Map               *ConcurrentMap
+	Map               *ConcurrentMap	`json:"-"`
 	Indexes           []*Index
 
-	ShardDestinations map[string]int
-	mx                sync.Mutex
+	ShardDestinations map[string]int	`json:"dests"`
+	mx                sync.Mutex		`json:"-"`
 
-	ObjectsCounter    uint64
+	ObjectsCounter  uint64 `json:"objects"`
+	SyncDestination string `json:"sync_dest"`
 }
 
 type Element struct {
@@ -34,12 +35,26 @@ type Element struct {
 	Payload interface{} `json:"p"`
 }
 
-func (cm *ConcurrentMap) GetRandomShard() *ConcurrentMapShared {
-	return cm.Shared[rand.Intn(len(cm.Shared))]
+func NewCollection(path, name string, files []*os.File, indexes []*Index, sd map[string]int) *Collection {
+	return &Collection{name, NewConcurrentMap(path, files),
+	indexes, sd, sync.Mutex{}, 0, path}
 }
 
-func NewCollection(name string, files []*os.File, indexes []*Index, sd map[string]int) *Collection {
-	return &Collection{name, NewConcurrentMap(files), indexes, sd, sync.Mutex{}, 0}
+func (c *Collection) Sync() (err error) {
+	c.mx.Lock()
+	defer c.mx.Unlock()
+
+	err = c.Map.Sync()
+	if err != nil {
+		return err
+	}
+
+	data, err := json.Marshal(c)
+	if err != nil {
+		return err
+	}
+
+	return ioutil.WriteFile(c.SyncDestination+ "/" + c.Name + ".json", data, os.ModePerm)
 }
 
 func (c *Collection) Size() uint64 {
