@@ -6,6 +6,7 @@ import (
 	"math/rand"
 	"sync"
 	"time"
+	"strings"
 )
 
 var (
@@ -38,12 +39,12 @@ func fillUp() {
 func main() {
 	database = db.NewDatabase("test")
 	start := time.Now()
-	/*err := database.ScanAndLoadData()
+	err := database.ScanAndLoadData()
 	if err != nil {
-		fmt.Println("Failed to scan and load the data")
+		fmt.Println("Failed to scan and load the data", err)
 	}
 
-	fmt.Println("After loading attempt database contains", database.GetCollectionsCount(), "collections")*/
+	fmt.Println("After loading attempt database contains", database.GetCollectionsCount(), "collections and", database.GetTotalObjectsCount(), "objects")
 
 	if database.GetCollectionsCount() <= 0 {
 		start := time.Now()
@@ -51,8 +52,10 @@ func main() {
 
 		rand.Seed(time.Now().UnixNano())
 
-		total := 1000
+		total := 10000000
 		perThread := total / 4
+
+		fmt.Println("Filling up the database with", total, "objects...")
 
 		wg.Add(4)
 		// 1
@@ -95,26 +98,27 @@ func main() {
 		fmt.Println("Database loading took", time.Now().Sub(start))
 	}
 
-	err := database.Sync()
+	start = time.Now()
+	err = database.Sync()
+	fmt.Println("Sync took", time.Now().Sub(start))
 	if err != nil {
 		panic(err)
 	}
-
-	/*fmt.Println("Database now contains", database.GetTotalObjectsCount(), "objects")
 
 	someId, _, err := database.GetRandomAliveObject()
 	if err != nil {
 		panic(err)
 	}
 	trimmedId := strings.TrimLeft(someId,"c1:id:")
+	fmt.Println("Attempt to find", someId, trimmedId)
 
 	start = time.Now()
 	data, err := database.GetCollection("c1").FindById(trimmedId)
-	fmt.Println("Search took", time.Now().Sub(start))
-
 	checkErr(err)
+
+	fmt.Println("Search took", time.Now().Sub(start))
 	fmt.Println("RESULT", data.Payload.(map[string]interface{})["FirstName"])
 
 	fmt.Print("Press enter to exit...")
-	fmt.Scanln()*/
+	fmt.Scanln()
 }

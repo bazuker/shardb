@@ -5,15 +5,16 @@ import (
 	"sync"
 	"errors"
 	"math/rand"
-	"encoding/json"
 	"io/ioutil"
 	"strconv"
+	"bytes"
+	"encoding/gob"
 )
 
 // A "thread" safe string to anything map.
 type ConcurrentMapShared struct {
-	Id    int                    `json:"Id"`
-	Items map[string]interface{} `json:"Items"`
+	Id    int                    `json:"id"`
+	Items map[string]interface{} `json:"items"`
 	file  *os.File               `json:"-"`
 
 	mx 	  sync.RWMutex // Read Write mutex, guards access to internal map.
@@ -43,11 +44,17 @@ func (shard *ConcurrentMapShared) RUnlock() {
 
 func (shard *ConcurrentMapShared) Sync() error {
 	shard.mx.RLock()
-	data, err := json.Marshal(shard)
+	/*data, err := json.Marshal(shard)
+	if err != nil {
+		return err
+	}*/
+	var data bytes.Buffer
+	enc := gob.NewEncoder(&data)
+	err := enc.Encode(shard)
 	if err != nil {
 		return err
 	}
-	err = ioutil.WriteFile(shard.SyncDestination+ "/shard_" + strconv.Itoa(shard.Id) + ".index", data, os.ModePerm)
+	err = ioutil.WriteFile(shard.SyncDestination+ "/shard_" + strconv.Itoa(shard.Id) + "_meta.gob", data.Bytes(), os.ModePerm)
 	shard.mx.RUnlock()
 
 	return err

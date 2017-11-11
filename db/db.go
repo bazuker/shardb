@@ -10,17 +10,21 @@ import (
 	"strings"
 	"encoding/json"
 	"log"
+	"bufio"
+	"encoding/gob"
 )
 
 const COLLECTION_DIR_NAME = "collections"
 
 type Database struct {
-	Name            string
+	Name            string					`json:"name"`
 	collections     map[string]*Collection	`json:"-"`
 	collectionMutex sync.RWMutex			`json:"-"`
 }
 
 func NewDatabase(name string) *Database {
+	gob.RegisterName("so", &ShardOffset{})
+
 	return &Database{name, make(map[string]*Collection), sync.RWMutex{}}
 }
 
@@ -55,30 +59,93 @@ func (db *Database) ScanAndLoadData() error {
 				return errors.New("collection has invalid amount of shards " + strconv.Itoa(cfLen) + ". Expected " + strconv.Itoa(SHARD_COUNT))
 			}
 
+			var collection *Collection
 			loaded := 0
 			files := make([]*os.File, SHARD_COUNT)
+			cm := NewConcurrentMap(collectionPath, files)
+			cNameExt := c.Name() + ".json"
+			mapIndexLoaded := false
 
 			for _, f := range collectionFiles {
-				if !strings.HasPrefix(f.Name(), "shard") {
-					if f.Name() == "index" {
+				fName := f.Name()
+				if strings.HasPrefix(fName, "shard_") {
+					// loading the shard main data
+					if strings.HasSuffix(fName, ".jsonlist") {
+						fi, err := os.Open(collectionPath + "/" + fName)
+						if err != nil {
+							return errors.New("collection (" + fName + ") shard (" + fName + ")is unavailable")
+						}
+						files[loaded] = fi
+						// loading the meta
+						fName := strings.TrimSuffix(fName, ".jsonlist") + "_meta.gob"
+						fo, err := os.Open(collectionPath + "/" + fName)
+						if err != nil {
+							return err
+						}
+						var shard ConcurrentMapShared
+						dec := gob.NewDecoder(fo)
+						if err != nil {
+							return err
+						}
+						err = dec.Decode(&shard)
+						if err != nil {
+							return errors.New("shard decoding failed " + err.Error())
+						}
+						shard.file = fi
+						cm.Shared[shard.Id] = &shard
 
+						loaded++
 					}
-					continue
+
+				// loading the map index
+				} else if f.Name() == "map.index" {
+					inFile, _ := os.Open(collectionPath + "/" + fName)
+					scanner := bufio.NewScanner(inFile)
+					scanner.Split(bufio.ScanLines)
+					// current map index
+					if scanner.Scan() {
+						num, err := strconv.ParseUint(scanner.Text(), 10, 64)
+						if err != nil {
+							return err
+						}
+						cm.SetCounterIndex(num)
+					}
+					// sync path
+					if scanner.Scan() {
+						cm.SyncDestination = scanner.Text()
+					}
+					inFile.Close()
+					mapIndexLoaded = true
+
+				// loading the collection's description
+				} else if f.Name() == cNameExt {
+					data, err := ioutil.ReadFile(collectionPath + "/" + cNameExt)
+					if err != nil {
+						return err
+					}
+					collection = new(Collection)
+					err = json.Unmarshal(data, collection)
+					if err != nil {
+						return err
+					}
+
 				}
-				fi, err := os.Open(collectionPath + "/" + f.Name())
-				if err != nil {
-					return errors.New("collection (" + c.Name() + ") shard (" + f.Name() + ")is unavailable")
-				}
-				files[loaded] = fi
-				loaded++
 			}
 
-			db.collectionMutex.Lock()
+			if !mapIndexLoaded {
+				return errors.New("map index file was not loaded")
+			}
+			if collection == nil {
+				return errors.New("collection description file missing")
+			}
 
-			db.collections[c.Name()] = NewCollection(collectionPath, c.Name(), files, createUniqueIdIndex(), make(map[string]int))
+			collection.Map = cm
+
+			db.collectionMutex.Lock()
+			db.collections[c.Name()] = collection
 			db.collectionMutex.Unlock()
 
-			if loaded < cfLen {
+			if loaded < SHARD_COUNT {
 				return errors.New("collection " + c.Name() + " files are corrupted")
 			}
 		}
@@ -89,15 +156,20 @@ func (db *Database) ScanAndLoadData() error {
 
 func (db *Database) Sync() error {
 	db.collectionMutex.RLock()
+	wg := sync.WaitGroup{}
+	wg.Add(len(db.collections))
 	for _, c := range db.collections {
-		//go func() {
+		go func() {
 			err := c.Sync()
 			if err != nil {
 				log.Println("Collection " + c.Name + " syncronization failed:", err.Error())
 			}
-		//}()
+			wg.Done()
+		}()
 	}
 	db.collectionMutex.RUnlock()
+
+	wg.Wait()
 
 	data, err := json.Marshal(db)
 	if err != nil {
@@ -159,7 +231,7 @@ func (db *Database) AddCollection(name string) error {
 	path := COLLECTION_DIR_NAME + "/" + name
 	os.MkdirAll(path, os.ModePerm)
 	for i := 0; i < SHARD_COUNT; i++ {
-		f, err := os.Create(path + "/shard_" + strconv.Itoa(i))
+		f, err := os.Create(path + "/shard_" + strconv.Itoa(i) + ".jsonlist")
 		if err != nil {
 			return errors.New("failed to create a shard")
 		}
@@ -167,7 +239,7 @@ func (db *Database) AddCollection(name string) error {
 	}
 
 	db.collectionMutex.Lock()
-	db.collections[name] = NewCollection(path, name, files, createUniqueIdIndex(), make(map[string]int))
+	db.collections[name] = NewCollection(path, name, NewConcurrentMap(path, files), createUniqueIdIndex(), make(map[string]int))
 	db.collectionMutex.Unlock()
 
 	return nil

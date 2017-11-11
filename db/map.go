@@ -9,9 +9,6 @@ import (
 	"github.com/rs/xid"
 	"math/rand"
 	"io/ioutil"
-	"compress/gzip"
-	"bytes"
-	"bufio"
 )
 
 var SHARD_COUNT = 32
@@ -36,6 +33,33 @@ func (cm *ConcurrentMap) GetRandomShard() *ConcurrentMapShared {
 	return cm.Shared[rand.Intn(len(cm.Shared))]
 }
 
+// Flushes all data to the drive and then reopens the file
+func (cm *ConcurrentMap) Flush() error {
+	for _, shard := range cm.Shared {
+		shard.Lock()
+		shard.file.Close()
+		f, err := os.Open(shard.SyncDestination + "/shard_" + strconv.Itoa(shard.Id) + ".jsonlist")
+		if err != nil {
+			return err
+		}
+		shard.file = f
+		shard.Unlock()
+	}
+	return nil
+}
+
+func (cm *ConcurrentMap) SetCounterIndex(value uint64) error{
+	if value >= uint64(SHARD_COUNT) || value < 0 {
+		return errors.New("invalid value")
+	}
+
+	cm.counterMx.Lock()
+	cm.counter = value
+	cm.counterMx.Unlock()
+
+	return nil
+}
+
 func (cm *ConcurrentMap) Sync() (err error) {
 	for _, shard := range cm.Shared {
 		err = shard.Sync()
@@ -43,9 +67,10 @@ func (cm *ConcurrentMap) Sync() (err error) {
 			return err
 		}
 	}
+
 	cm.counterMx.Lock()
-	err = ioutil.WriteFile(cm.SyncDestination + "/map_index.json",
-		[]byte(strconv.FormatUint(cm.counter, 10)), os.ModePerm)
+	err = ioutil.WriteFile(cm.SyncDestination + "/map.index",
+		[]byte(strconv.FormatUint(cm.counter, 10) + "\n" + cm.SyncDestination), os.ModePerm)
 	cm.counterMx.Unlock()
 
 	return err
@@ -90,8 +115,8 @@ func (m *ConcurrentMap) FindById(shard *ConcurrentMapShared, key string, id stri
 	shard.RLock()
 	defer shard.RUnlock()
 
-	if item, ok := shard.Items[key + ":Id:" + id]; ok {
-		offset := item.(ShardOffset)
+	if item, ok := shard.Items[key + ":id:" + id]; ok {
+		offset := item.(*ShardOffset)
 		data := make([]byte, offset.Length)
 		_, err := shard.file.ReadAt(data, offset.Start)
 		if err != nil {
@@ -122,12 +147,9 @@ func (m *ConcurrentMap) Set(key string, indexData []IndexData, value interface{}
 	if err != nil {
 		return -1, "", err
 	}
-	var b bytes.Buffer
-	w := gzip.NewWriterLevel(bufio.NewWriter(&b), gzip.BestSpeed)
-	line := []byte("\")
-	data := make([]byte, len(jData) + len())
-	w.Write(data + []byte("string"))
-	n, err := shard.file.WriteString(string(data) + "\n")
+
+	n := 0
+	n, err = shard.file.WriteString(string(jData) + "\n")
 	if err != nil {
 		return -1, "", err
 	}
@@ -135,7 +157,7 @@ func (m *ConcurrentMap) Set(key string, indexData []IndexData, value interface{}
 	// Write Id index if other indexes were not provided
 	offset := ShardOffset{ret, n}
 	if indexData == nil {
-		shard.Items[key + ":Id:" + idStr] = &offset
+		shard.Items[key + ":id:" + idStr] = &offset
 	} else {
 		// Or walk through the provided indexes otherwise
 		for _, ix := range indexData {

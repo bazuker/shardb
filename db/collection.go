@@ -19,12 +19,12 @@ type IndexData struct {
 }
 
 type Collection struct {
-	Name              string
+	Name              string			`json:"name"`
 	Map               *ConcurrentMap	`json:"-"`
 	Indexes           []*Index
 
 	ShardDestinations map[string]int	`json:"dests"`
-	mx                sync.Mutex		`json:"-"`
+	sharedDestMx      sync.Mutex		`json:"-"`
 
 	ObjectsCounter  uint64 `json:"objects"`
 	SyncDestination string `json:"sync_dest"`
@@ -35,19 +35,24 @@ type Element struct {
 	Payload interface{} `json:"p"`
 }
 
-func NewCollection(path, name string, files []*os.File, indexes []*Index, sd map[string]int) *Collection {
-	return &Collection{name, NewConcurrentMap(path, files),
-	indexes, sd, sync.Mutex{}, 0, path}
+func NewCollection(path, name string, cm *ConcurrentMap, indexes []*Index, sd map[string]int) *Collection {
+	return &Collection{name, cm,indexes, sd, sync.Mutex{}, 0, path}
 }
 
 func (c *Collection) Sync() (err error) {
-	c.mx.Lock()
-	defer c.mx.Unlock()
+	err = c.Map.Flush()
+	if err != nil {
+		// very critical error
+		return err
+	}
 
 	err = c.Map.Sync()
 	if err != nil {
 		return err
 	}
+
+	c.sharedDestMx.Lock()
+	defer c.sharedDestMx.Unlock()
 
 	data, err := json.Marshal(c)
 	if err != nil {
@@ -67,9 +72,9 @@ func (c *Collection) Write(payload interface{}) error {
 		return err
 	}
 
-	c.mx.Lock()
+	c.sharedDestMx.Lock()
 	c.ShardDestinations[objId] = id
-	c.mx.Unlock()
+	c.sharedDestMx.Unlock()
 
 	atomic.AddUint64(&c.ObjectsCounter, 1)
 
