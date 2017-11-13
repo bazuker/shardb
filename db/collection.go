@@ -4,8 +4,6 @@ import (
 	"encoding/json"
 	"sync"
 	"sync/atomic"
-	"os"
-	"io/ioutil"
 )
 
 type Index struct {
@@ -58,8 +56,10 @@ func (c *Collection) Sync() (err error) {
 	if err != nil {
 		return err
 	}
+	p := NewCompressedPackage(c.SyncDestination+ "/" + c.Name + ".json.gzip")
+	p.SetData(data)
 
-	return ioutil.WriteFile(c.SyncDestination+ "/" + c.Name + ".json", data, os.ModePerm)
+	return p.Save()
 }
 
 func (c *Collection) Size() uint64 {
@@ -89,5 +89,3 @@ func (c *Collection) FindById(id string) (*Element, error) {
 	e := new(Element)
 	return e, json.Unmarshal(data, e)
 }
-
-// c1.get.

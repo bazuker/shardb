@@ -5,10 +5,7 @@ import (
 	"sync"
 	"errors"
 	"math/rand"
-	"io/ioutil"
 	"strconv"
-	"bytes"
-	"encoding/gob"
 )
 
 // A "thread" safe string to anything map.
@@ -48,13 +45,19 @@ func (shard *ConcurrentMapShared) Sync() error {
 	if err != nil {
 		return err
 	}*/
-	var data bytes.Buffer
+	/*
 	enc := gob.NewEncoder(&data)
 	err := enc.Encode(shard)
 	if err != nil {
 		return err
 	}
-	err = ioutil.WriteFile(shard.SyncDestination+ "/shard_" + strconv.Itoa(shard.Id) + "_meta.gob", data.Bytes(), os.ModePerm)
+	err = ioutil.WriteFile(shard.SyncDestination+ "/shard_" + strconv.Itoa(shard.Id) + "_meta.gob", data.Bytes(), os.ModePerm)*/
+	p := NewEncodedCompressedPackage(shard.SyncDestination+ "/shard_" + strconv.Itoa(shard.Id) + "_meta.gob.gzip")
+	p.SetData(shard)
+	err := p.Save()
+	if err != nil {
+		return err
+	}
 	shard.mx.RUnlock()
 
 	return err

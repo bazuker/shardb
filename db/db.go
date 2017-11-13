@@ -24,6 +24,8 @@ type Database struct {
 
 func NewDatabase(name string) *Database {
 	gob.RegisterName("so", &ShardOffset{})
+	gob.RegisterName("sh", &ConcurrentMapShared{})
+	gob.RegisterName("cl", &Collection{})
 
 	return &Database{name, make(map[string]*Collection), sync.RWMutex{}}
 }
@@ -77,20 +79,18 @@ func (db *Database) ScanAndLoadData() error {
 						}
 						files[loaded] = fi
 						// loading the meta
-						fName := strings.TrimSuffix(fName, ".jsonlist") + "_meta.gob"
-						fo, err := os.Open(collectionPath + "/" + fName)
+						fName := strings.TrimSuffix(fName, ".jsonlist") + "_meta.gob.gzip"
+						p := NewEncodedCompressedPackage(collectionPath + "/" + fName)
+						dec, err := p.LoadDecoder()
 						if err != nil {
 							return err
 						}
 						var shard ConcurrentMapShared
-						dec := gob.NewDecoder(fo)
+						err = dec.Decode(&shard)
 						if err != nil {
 							return err
 						}
-						err = dec.Decode(&shard)
-						if err != nil {
-							return errors.New("shard decoding failed " + err.Error())
-						}
+						dec = nil
 						shard.file = fi
 						cm.Shared[shard.Id] = &shard
 

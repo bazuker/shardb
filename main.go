@@ -52,7 +52,7 @@ func main() {
 
 		rand.Seed(time.Now().UnixNano())
 
-		total := 10000000
+		total := 1000
 		perThread := total / 4
 
 		fmt.Println("Filling up the database with", total, "objects...")
@@ -119,6 +119,6 @@ func main() {
 	fmt.Println("Search took", time.Now().Sub(start))
 	fmt.Println("RESULT", data.Payload.(map[string]interface{})["FirstName"])
 
-	fmt.Print("Press enter to exit...")
-	fmt.Scanln()
+	//fmt.Print("Press enter to exit...")
+	//fmt.Scanln()
 }
