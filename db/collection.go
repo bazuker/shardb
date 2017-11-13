@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"sync"
 	"sync/atomic"
+	"errors"
 )
 
 type Index struct {
@@ -37,6 +38,14 @@ func NewCollection(path, name string, cm *ConcurrentMap, indexes []*Index, sd ma
 	return &Collection{name, cm,indexes, sd, sync.Mutex{}, 0, path}
 }
 
+func (c *Collection) GetRandomAliveObject() (string, interface{}, error) {
+	shard := c.Map.GetRandomShard()
+	if shard == nil {
+		return "", nil, errors.New("collections does not have any shards")
+	}
+	return shard.GetRandomItem()
+}
+
 func (c *Collection) Sync() (err error) {
 	err = c.Map.Flush()
 	if err != nil {
@@ -67,7 +76,7 @@ func (c *Collection) Size() uint64 {
 }
 
 func (c *Collection) Write(payload interface{}) error {
-	id, objId, err := c.Map.Set(c.Name, nil, payload)
+	id, objId, err := c.Map.Set(nil, payload)
 	if err != nil {
 		return err
 	}

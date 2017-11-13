@@ -11,14 +11,19 @@ import (
 type EncodedCompressedPackage struct {
 	name string
 	data interface{}
+	compressionLevel int
 }
 
 func NewEncodedCompressedPackage(name string) *EncodedCompressedPackage {
-	return &EncodedCompressedPackage{name, nil}
+	return &EncodedCompressedPackage{name, nil, gzip.BestCompression}
 }
 
 func (p *EncodedCompressedPackage) SetData(data interface{}) {
 	p.data = data
+}
+
+func (p *EncodedCompressedPackage) SetCompressionLevel(level int) {
+	p.compressionLevel = level
 }
 
 func (p *EncodedCompressedPackage) Save() error {
@@ -36,7 +41,7 @@ func (p *EncodedCompressedPackage) Save() error {
 	}
 	defer f.Close()
 
-	gzipw := gzip.NewWriter(f)
+	gzipw, _ := gzip.NewWriterLevel(f, p.compressionLevel)
 	defer gzipw.Close()
 	_, err = gzipw.Write(data.Bytes())
 

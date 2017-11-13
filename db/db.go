@@ -12,6 +12,7 @@ import (
 	"log"
 	"bufio"
 	"encoding/gob"
+	"time"
 )
 
 const COLLECTION_DIR_NAME = "collections"
@@ -23,6 +24,8 @@ type Database struct {
 }
 
 func NewDatabase(name string) *Database {
+	rand.Seed(time.Now().UnixNano())
+
 	gob.RegisterName("so", &ShardOffset{})
 	gob.RegisterName("sh", &ConcurrentMapShared{})
 	gob.RegisterName("cl", &Collection{})
@@ -34,6 +37,10 @@ func createUniqueIdIndex() []*Index {
 	indexes := make([]*Index, 1)
 	indexes[0] = &Index{"id", true}
 	return indexes
+}
+
+func (db *Database) RegisterType(value interface{}) {
+	gob.Register(value)
 }
 
 func (db *Database) ScanAndLoadData() error {
@@ -65,7 +72,7 @@ func (db *Database) ScanAndLoadData() error {
 			loaded := 0
 			files := make([]*os.File, SHARD_COUNT)
 			cm := NewConcurrentMap(collectionPath, files)
-			cNameExt := c.Name() + ".json"
+			cNameExt := c.Name() + ".json.gzip"
 			mapIndexLoaded := false
 
 			for _, f := range collectionFiles {
@@ -75,7 +82,7 @@ func (db *Database) ScanAndLoadData() error {
 					if strings.HasSuffix(fName, ".jsonlist") {
 						fi, err := os.Open(collectionPath + "/" + fName)
 						if err != nil {
-							return errors.New("collection (" + fName + ") shard (" + fName + ")is unavailable")
+							return errors.New("collection (" + fName + ") shard (" + fName + ") is unavailable")
 						}
 						files[loaded] = fi
 						// loading the meta
@@ -119,7 +126,7 @@ func (db *Database) ScanAndLoadData() error {
 
 				// loading the collection's description
 				} else if f.Name() == cNameExt {
-					data, err := ioutil.ReadFile(collectionPath + "/" + cNameExt)
+					data, err := NewCompressedPackage(collectionPath + "/" + cNameExt).Load()
 					if err != nil {
 						return err
 					}
@@ -159,13 +166,14 @@ func (db *Database) Sync() error {
 	wg := sync.WaitGroup{}
 	wg.Add(len(db.collections))
 	for _, c := range db.collections {
-		go func() {
-			err := c.Sync()
+		go func(cl *Collection) {
+			log.Println("Synchronizing " + cl.Name)
+			err := cl.Sync()
 			if err != nil {
-				log.Println("Collection " + c.Name + " syncronization failed:", err.Error())
+				log.Println("Collection " + cl.Name + " syncronization failed:", err.Error())
 			}
 			wg.Done()
-		}()
+		}(c)
 	}
 	db.collectionMutex.RUnlock()
 
@@ -208,18 +216,6 @@ func (db *Database) GetRandomCollection() *Collection {
 		i++
 	}
 	return nil
-}
-
-func (db *Database) GetRandomAliveObject() (string, interface{}, error) {
-	c := db.GetRandomCollection()
-	if c == nil {
-		return "", nil, errors.New("database does not have any collections")
-	}
-	shard := c.Map.GetRandomShard()
-	if shard == nil {
-		return "", nil, errors.New("collections does not have any shards")
-	}
-	return shard.GetRandomItem()
 }
 
 func (db *Database) AddCollection(name string) error {

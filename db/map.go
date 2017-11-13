@@ -129,7 +129,7 @@ func (m *ConcurrentMap) FindById(shard *ConcurrentMapShared, key string, id stri
 
 // Sets the given value under the specified key.
 // return shard Id, object Id
-func (m *ConcurrentMap) Set(key string, indexData []IndexData, value interface{}) (int, string, error) {
+func (m *ConcurrentMap) Set(indexData []IndexData, value interface{}) (int, string, error) {
 	// Get map shard.
 	shard := m.GetNextShard()
 	shard.Lock()
@@ -157,11 +157,11 @@ func (m *ConcurrentMap) Set(key string, indexData []IndexData, value interface{}
 	// Write Id index if other indexes were not provided
 	offset := ShardOffset{ret, n}
 	if indexData == nil {
-		shard.Items[key + ":id:" + idStr] = &offset
+		shard.Items["id:" + idStr] = &offset
 	} else {
 		// Or walk through the provided indexes otherwise
 		for _, ix := range indexData {
-			fullKey := key + ":" + ix.Field + ":" + ix.Data
+			fullKey := ix.Field + ":" + ix.Data
 			index := 0
 			lastAvailable := ""
 			for ; ; {

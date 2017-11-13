@@ -1,10 +1,12 @@
 package main
 
+import "shardb/db"
 
 type Person struct {
 	FirstName string
 	LastName string
 }
 
-
-// {"Age":20,"LastName":"Furman","FirstName":"Daniel"}
+func InitCustomTypes(db *db.Database) {
+	db.RegisterType(&Person{})
+}
