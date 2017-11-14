@@ -157,8 +157,6 @@ func (m *ConcurrentMap) FindByKey(shard *ConcurrentMapShared, key, value string)
 func (m *ConcurrentMap) Set(indexData []*FullDataIndex, value interface{}) (map[string]*int, error) {
 	// Get map shard.
 	shard := m.GetNextShard()
-	shard.Lock()
-	defer shard.Unlock()
 
 	idStr := xid.New().String()
 	// Marshal the payload
@@ -167,6 +165,9 @@ func (m *ConcurrentMap) Set(indexData []*FullDataIndex, value interface{}) (map[
 	if err != nil {
 		return nil, err
 	}
+
+	shard.Lock()
+	defer shard.Unlock()
 
 	// Write to the file
 	ret, err := shard.file.Seek(0, 2)
