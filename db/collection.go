@@ -126,9 +126,9 @@ func (c *Collection) Write(payload CustomStructure) error {
 	for k, v := range destMap {
 		c.ShardDestinations[k] = v
 	}
-	destMap = nil
 	c.sharedDestMx.Unlock()
 
+	destMap = nil
 	atomic.AddUint64(&c.ObjectsCounter, 1)
 
 	return nil

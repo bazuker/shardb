@@ -6,8 +6,8 @@ import (
 )
 
 type Person struct {
-	FirstName string
-	Age       int // primary key
+	FirstName string // primary unique key
+	Age       int    // primary key
 }
 
 func (c *Person) GetDataIndex() []*db.FullDataIndex {
