@@ -26,10 +26,11 @@ if database.GetCollectionsCount() <= 0 {
     if err != nil {
         panic(err)
     }
+    database.Sync()
 }
 ```
 
-Every structure that you are to write in the database must obtain the interface "CustomStructure"
+Every structure that you are to write in the database must obey the interface "CustomStructure"
 and be registered in the system.
 ```Go
 type Person struct {
@@ -49,4 +50,4 @@ func InitCustomTypes(db *db.Database) {
     db.RegisterType(&Person{})
 }
 ```
-More detailed example can be found in<i>examples/general_example.go</i>
+More detailed example can be found in <i>examples/general_example.go</i>
