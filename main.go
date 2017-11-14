@@ -72,8 +72,9 @@ func main() {
 
 		rand.Seed(time.Now().UnixNano())
 
-		total := 100000
+		total := 1000000
 		threads := 4
+
 		fillUpCollection(database.GetCollection("c1"), total, threads)
 		fillUpCollection(database.GetCollection("c2"), total, threads)
 		fillUpCollection(database.GetCollection("c3"), total, threads)

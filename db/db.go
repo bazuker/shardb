@@ -46,6 +46,10 @@ func createUniqueIdIndex() []*Index {
 	return indexes
 }
 
+func (db *Database) RegisterTypeName(name string, value CustomStructure) {
+	gob.RegisterName(name, value)
+}
+
 func (db *Database) RegisterType(value CustomStructure) {
 	gob.Register(value)
 }
