@@ -163,7 +163,7 @@ func (m *ConcurrentMap) Set(indexData []*FullDataIndex, value interface{}) (map[
 	idStr := xid.New().String()
 	// Marshal the payload
 	elem := Element{idStr, value}
-	encodedData, err := EncodeGob(elem) //json.Marshal(elem)
+	encodedData, err := EncodeGob(elem)
 	if err != nil {
 		return nil, err
 	}
@@ -192,6 +192,9 @@ func (m *ConcurrentMap) Set(indexData []*FullDataIndex, value interface{}) (map[
 		for _, ix := range indexData {
 			fullKey := ix.Field + ":" + ix.Data
 			if ix.Unique {
+				if _, ok := shard.Items[fullKey]; ok {
+					return nil, errors.New("unique primary key duplicate")
+				}
 				shard.Items[fullKey] = &offset
 				destMap[fullKey] = pId
 			} else {
