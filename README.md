@@ -4,12 +4,12 @@ Fast and flexible database where increase in amount of data does not affect the 
 Search can be performed based on primary keys for every type of structure.
 There are two types of primary keys: unique and not.
 
-<b>Unique</b>key must be unique across the collection. 
+<b>Unique</b> key must be unique across the collection. 
 Complexity of the search based a unique key is <b>O(3)</b> 
 (taking as a fact that accessing the map is a constant time <i>O(1)</i>)
 
-<b>NOT unique</b>key may have duplicates but when the search is performed,
-complexity is<b>O(3+N)</b>where N is amount of records to return.
+<b>NOT unique</b> key may have duplicates but when the search is performed,
+complexity is <b>O(3+N)</b> where N is amount of records to return.
 
 Example of use
 ```Go
