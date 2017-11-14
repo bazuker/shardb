@@ -133,7 +133,7 @@ func main() {
 	}
 	// retrieving the id
 	trimmedId := strings.TrimLeft(someId,"id:")
-	fmt.Println("Attempt to find", someId, trimmedId)
+	fmt.Println("Attempt to find", someId, "=>", trimmedId)
 
 	// finding a record by id
 	start = time.Now()

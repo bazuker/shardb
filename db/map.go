@@ -111,11 +111,11 @@ func (m *ConcurrentMap) MSet(data map[string]interface{}) {
 	}
 }
 
-func (m *ConcurrentMap) FindById(shard *ConcurrentMapShared, key string, id string) ([]byte, error) {
+func (m *ConcurrentMap) FindById(shard *ConcurrentMapShared, id string) ([]byte, error) {
 	shard.RLock()
 	defer shard.RUnlock()
 
-	if item, ok := shard.Items[key + ":id:" + id]; ok {
+	if item, ok := shard.Items["id:" + id]; ok {
 		offset := item.(*ShardOffset)
 		data := make([]byte, offset.Length)
 		_, err := shard.file.ReadAt(data, offset.Start)

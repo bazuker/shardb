@@ -91,7 +91,7 @@ func (c *Collection) Write(payload interface{}) error {
 }
 
 func (c *Collection) FindById(id string) (*Element, error) {
-	data, err := c.Map.FindById(c.Map.Shared[c.ShardDestinations[id]], c.Name, id)
+	data, err := c.Map.FindById(c.Map.Shared[c.ShardDestinations[id]], id)
 	if err != nil {
 		return nil, err
 	}
