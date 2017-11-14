@@ -179,8 +179,6 @@ func (m *ConcurrentMap) FindByKey(key, value string, limit int) ([][]byte, error
 	return results, nil
 }
 
-// Sets the given value under the specified key.
-// return shard Id, object Id
 func (m *ConcurrentMap) Set(indexData []*FullDataIndex, value interface{}) (map[string]*int, error) {
 	idStr := xid.New().String()
 	// Marshal the payload
