@@ -1,4 +1,4 @@
-package main
+package examples
 
 import (
 	"shardb/db"
@@ -6,13 +6,14 @@ import (
 )
 
 type Person struct {
-	FirstName string // primary unique key
-	Age       int    // primary key
+	Login string // primary unique key
+	Name  string
+	Age   int // primary key
 }
 
 func (c *Person) GetDataIndex() []*db.FullDataIndex {
 	return []*db.FullDataIndex{
-		{"FirstName", c.FirstName, true},
+		{"Login", c.Login, true},
 		{"Age", strconv.Itoa(c.Age), false},
 	}
 }

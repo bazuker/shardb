@@ -1,8 +1,6 @@
 package db
 
 import (
-	"bytes"
-	"encoding/gob"
 	"errors"
 	"github.com/rs/xid"
 	"io/ioutil"
@@ -111,11 +109,6 @@ func (m *ConcurrentMap) ReadAtOffset(shard *ConcurrentMapShared, offset *ShardOf
 	return data, err
 }
 
-func (m *ConcurrentMap) DecodeElement(data []byte) (*Element, error) {
-	e := new(Element)
-	return e, gob.NewDecoder(bytes.NewReader(data)).Decode(e)
-}
-
 func (m *ConcurrentMap) FindById(shard *ConcurrentMapShared, id string) ([]byte, error) {
 	return m.FindByUniqueKey(shard, "id", id)
 }
@@ -130,13 +123,13 @@ func (m *ConcurrentMap) FindByUniqueKey(shard *ConcurrentMapShared, key, value s
 	return nil, errors.New("not found")
 }
 
-func (m *ConcurrentMap) FindByKey(shard *ConcurrentMapShared, key, value string) ([][]byte, error) {
+func (m *ConcurrentMap) FindByKeyInShard(shard *ConcurrentMapShared, key, value string, limit int) ([][]byte, error) {
 	shard.RLock()
 	defer shard.RUnlock()
 
 	i := 0
 	kv := ":" + key + ":" + value
-	results := make([][]byte, 0)
+	results := make([][]byte, 0, limit)
 	for {
 		if item, ok := shard.Items[strconv.Itoa(i)+kv]; ok {
 			data, err := m.ReadAtOffset(shard, item)
@@ -144,10 +137,42 @@ func (m *ConcurrentMap) FindByKey(shard *ConcurrentMapShared, key, value string)
 				return nil, err
 			}
 			results = append(results, data)
+			if len(results) == limit {
+				return results, nil
+			}
 		} else {
 			break
 		}
 		i++
+	}
+	return results, nil
+}
+
+func (m *ConcurrentMap) FindByKey(key, value string, limit int) ([][]byte, error) {
+	results := make([][]byte, 0, limit)
+	for n := 0; n < SHARD_COUNT; n++ {
+		shard := m.Shared[n]
+		shard.Lock()
+		i := 0
+		kv := ":" + key + ":" + value
+		for {
+			if item, ok := shard.Items[strconv.Itoa(i)+kv]; ok {
+				data, err := m.ReadAtOffset(shard, item)
+				if err != nil {
+					shard.Unlock()
+					return nil, err
+				}
+				results = append(results, data)
+				if len(results) == limit {
+					shard.Unlock()
+					return results, nil
+				}
+			} else {
+				break
+			}
+			i++
+		}
+		shard.Unlock()
 	}
 	return results, nil
 }

@@ -1,6 +1,8 @@
 package db
 
 import (
+	"bytes"
+	"encoding/gob"
 	"encoding/json"
 	"errors"
 	"github.com/allegro/bigcache"
@@ -65,7 +67,8 @@ func NewCollectionCache() *bigcache.BigCache {
 }
 
 func NewCollection(path, name string, cm *ConcurrentMap, indexes []*Index, sd map[string]*int) *Collection {
-	return &Collection{name, cm, NewCollectionCache(), indexes, sd, sync.RWMutex{}, 0, path}
+	return &Collection{name, cm, NewCollectionCache(), indexes,
+		sd, sync.RWMutex{}, 0, path}
 }
 
 func (c *Collection) GetRandomAliveObject() (string, *Element, error) {
@@ -83,8 +86,13 @@ func (c *Collection) GetRandomAliveObject() (string, *Element, error) {
 	if err != nil {
 		return "", nil, err
 	}
-	e, err := c.Map.DecodeElement(data)
+	e, err := c.DecodeElement(data)
 	return key, e, err
+}
+
+func (c *Collection) DecodeElement(data []byte) (*Element, error) {
+	e := new(Element)
+	return e, gob.NewDecoder(bytes.NewReader(data)).Decode(e)
 }
 
 func (c *Collection) Sync() (err error) {
@@ -134,11 +142,6 @@ func (c *Collection) Write(payload CustomStructure) error {
 	return nil
 }
 
-func unmarshalElement(data []byte) (*Element, error) {
-	e := new(Element)
-	return e, json.Unmarshal(data, e)
-}
-
 func (c *Collection) getShardByKey(key string) *ConcurrentMapShared {
 	c.sharedDestMx.RLock()
 	defer c.sharedDestMx.RUnlock()
@@ -150,9 +153,8 @@ func (c *Collection) scanDataByUniqueIndex(entry CustomStructure, index *FullDat
 	return c.Map.FindByUniqueKey(shard, index.Field, index.Data)
 }
 
-func (c *Collection) scanDataByIndex(entry CustomStructure, index *FullDataIndex) ([][]byte, error) {
-	shard := c.getShardByKey("0:" + index.Field + ":" + index.Data)
-	data, err := c.Map.FindByKey(shard, index.Field, index.Data)
+func (c *Collection) scanDataByIndex(entry CustomStructure, index *FullDataIndex, limit int) ([][]byte, error) {
+	data, err := c.Map.FindByKey(index.Field, index.Data, limit)
 	if err != nil {
 		return nil, err
 	} else if len(data) == 0 {
@@ -161,10 +163,10 @@ func (c *Collection) scanDataByIndex(entry CustomStructure, index *FullDataIndex
 	return data, nil
 }
 
-func (c *Collection) FindById(id string) (*Element, error) {
+func (c *Collection) FindById(id string) ([]byte, error) {
 	data, err := c.Cache.Get("id:" + id)
 	if err == nil {
-		return unmarshalElement(data)
+		return data, nil
 	}
 
 	shard := c.getShardByKey(id)
@@ -174,7 +176,7 @@ func (c *Collection) FindById(id string) (*Element, error) {
 	}
 	c.Cache.Set("id:"+id, data)
 
-	return unmarshalElement(data)
+	return data, nil
 }
 
 func (c *Collection) Scan(entry CustomStructure) ([]byte, error) {
@@ -186,7 +188,7 @@ func (c *Collection) Scan(entry CustomStructure) ([]byte, error) {
 		if ix.Unique {
 			return c.scanDataByUniqueIndex(entry, ix)
 		} else {
-			data, err := c.scanDataByIndex(entry, ix)
+			data, err := c.scanDataByIndex(entry, ix, 1)
 			if err != nil {
 				return nil, err
 			}
@@ -196,7 +198,7 @@ func (c *Collection) Scan(entry CustomStructure) ([]byte, error) {
 	return nil, errors.New("no matching data")
 }
 
-func (c *Collection) ScanAll(entry CustomStructure) ([][]byte, error) {
+func (c *Collection) ScanN(entry CustomStructure, limit int) ([][]byte, error) {
 	indexes := entry.GetDataIndex()
 	for _, ix := range indexes {
 		if ix.Data == "" {
@@ -209,8 +211,13 @@ func (c *Collection) ScanAll(entry CustomStructure) ([][]byte, error) {
 			}
 			return [][]byte{data}, nil
 		} else {
-			return c.scanDataByIndex(entry, ix)
+			return c.scanDataByIndex(entry, ix, limit)
 		}
 	}
 	return nil, errors.New("no matching data")
+}
+
+func (c *Collection) ScanAll(entry CustomStructure) ([][]byte, error) {
+	const limit = 1000
+	return c.ScanN(entry, limit)
 }
