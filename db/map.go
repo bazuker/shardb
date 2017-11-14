@@ -1,5 +1,7 @@
 package db
 
+// Original idea of the concurrent map was taken from https://github.com/orcaman/concurrent-map
+
 import (
 	"errors"
 	"github.com/rs/xid"
@@ -277,46 +279,6 @@ func (m *ConcurrentMap) Has(key string) bool {
 	return ok
 }
 
-// Removes an element from the map.
-func (m *ConcurrentMap) Remove(key string) {
-	// Try to get shard.
-	shard := m.GetShard(key)
-	shard.Lock()
-	delete(shard.Items, key)
-	shard.Unlock()
-}
-
-// RemoveCb is a callback executed in a map.RemoveCb() call, while Lock is held
-// If returns true, the element will be removed from the map
-type RemoveCb func(key string, v interface{}, exists bool) bool
-
-// RemoveCb locks the shard containing the key, retrieves its current value and calls the callback with those params
-// If callback returns true and element exists, it will remove it from the map
-// Returns the value returned by the callback (even if element was not present in the map)
-func (m *ConcurrentMap) RemoveCb(key string, cb RemoveCb) bool {
-	// Try to get shard.
-	shard := m.GetShard(key)
-	shard.Lock()
-	v, ok := shard.Items[key]
-	remove := cb(key, v, ok)
-	if remove && ok {
-		delete(shard.Items, key)
-	}
-	shard.Unlock()
-	return remove
-}
-
-// Removes an element from the map and returns it
-func (m *ConcurrentMap) Pop(key string) (v interface{}, exists bool) {
-	// Try to get shard.
-	shard := m.GetShard(key)
-	shard.Lock()
-	v, exists = shard.Items[key]
-	delete(shard.Items, key)
-	shard.Unlock()
-	return v, exists
-}
-
 // Checks if map is empty.
 func (m *ConcurrentMap) IsEmpty() bool {
 	return m.Count() == 0
@@ -391,80 +353,6 @@ func fanIn(chans []chan Tuple, out chan Tuple) {
 	wg.Wait()
 	close(out)
 }
-
-// Returns all Items as map[string]interface{}
-func (m *ConcurrentMap) Items() map[string]interface{} {
-	tmp := make(map[string]interface{})
-
-	// Insert Items to temporary map.
-	for item := range m.IterBuffered() {
-		tmp[item.Key] = item.Val
-	}
-
-	return tmp
-}
-
-// Iterator callback,called for every key,value found in
-// maps. RLock is held for all calls for a given shard
-// therefore callback sess consistent view of a shard,
-// but not across the shards
-type IterCb func(key string, v interface{})
-
-// Callback based iterator, cheapest way to read
-// all elements in a map.
-func (m *ConcurrentMap) IterCb(fn IterCb) {
-	for idx := range m.Shared {
-		shard := (m.Shared)[idx]
-		shard.RLock()
-		for key, value := range shard.Items {
-			fn(key, value)
-		}
-		shard.RUnlock()
-	}
-}
-
-// Return all keys as []string
-func (m *ConcurrentMap) Keys() []string {
-	count := m.Count()
-	ch := make(chan string, count)
-	go func() {
-		// Foreach shard.
-		wg := sync.WaitGroup{}
-		wg.Add(SHARD_COUNT)
-		for _, shard := range m.Shared {
-			go func(shard *ConcurrentMapShared) {
-				// Foreach key, value pair.
-				shard.RLock()
-				for key := range shard.Items {
-					ch <- key
-				}
-				shard.RUnlock()
-				wg.Done()
-			}(shard)
-		}
-		wg.Wait()
-		close(ch)
-	}()
-
-	// Generate keys
-	keys := make([]string, 0, count)
-	for k := range ch {
-		keys = append(keys, k)
-	}
-	return keys
-}
-
-//Reviles ConcurrentMap "private" variables to json marshal.
-/*func (m *ConcurrentMap) MarshalJSON() ([]byte, error) {
-	// Create a temporary map, which will hold all item spread across shards.
-	tmp := make(map[string]interface{})
-
-	// Insert Items to temporary map.
-	for item := range m.IterBuffered() {
-		tmp[item.Key] = item.Val
-	}
-	return json.Marshal(tmp)
-}*/
 
 func fnv32(key string) uint32 {
 	hash := uint32(2166136261)
