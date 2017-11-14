@@ -1,26 +1,30 @@
 package db
 
 import (
-	"sync"
-	"errors"
-	"os"
-	"strconv"
-	"math/rand"
-	"io/ioutil"
-	"strings"
-	"encoding/json"
-	"log"
 	"bufio"
 	"encoding/gob"
+	"encoding/json"
+	"errors"
+	"io/ioutil"
+	"log"
+	"math/rand"
+	"os"
+	"strconv"
+	"strings"
+	"sync"
 	"time"
 )
 
 const COLLECTION_DIR_NAME = "collections"
 
 type Database struct {
-	Name            string					`json:"name"`
-	collections     map[string]*Collection	`json:"-"`
-	collectionMutex sync.RWMutex			`json:"-"`
+	Name            string                 `json:"name"`
+	collections     map[string]*Collection `json:"-"`
+	collectionMutex sync.RWMutex           `json:"-"`
+}
+
+type CustomStructure interface {
+	GetDataIndex() []*FullDataIndex
 }
 
 func NewDatabase(name string) *Database {
@@ -29,6 +33,9 @@ func NewDatabase(name string) *Database {
 	gob.RegisterName("so", &ShardOffset{})
 	gob.RegisterName("sh", &ConcurrentMapShared{})
 	gob.RegisterName("cl", &Collection{})
+	gob.RegisterName("el", &Element{})
+
+	ProfileSystemMemory()
 
 	return &Database{name, make(map[string]*Collection), sync.RWMutex{}}
 }
@@ -39,24 +46,30 @@ func createUniqueIdIndex() []*Index {
 	return indexes
 }
 
-func (db *Database) RegisterType(value interface{}) {
+func (db *Database) RegisterType(value CustomStructure) {
 	gob.Register(value)
 }
 
-func (db *Database) ScanAndLoadData() error {
-	_, err := os.Stat(COLLECTION_DIR_NAME)
+func (db *Database) ScanAndLoadData(path string) error {
+	ln := len(path)
+	if ln > 0 && path[len(path)-1] != '\\' {
+		path += "\\"
+	}
+
+	fullPath := path + COLLECTION_DIR_NAME
+	_, err := os.Stat(fullPath)
 	if os.IsNotExist(err) {
 		return errors.New("collections folder does not exist")
 	}
 
-	collections, err := ioutil.ReadDir(COLLECTION_DIR_NAME)
+	collections, err := ioutil.ReadDir(fullPath)
 	if err != nil {
 		return err
 	}
 
 	for _, c := range collections {
 		if c.IsDir() {
-			collectionPath := COLLECTION_DIR_NAME + "/" + c.Name()
+			collectionPath := fullPath + "/" + c.Name()
 
 			collectionFiles, err := ioutil.ReadDir(collectionPath)
 			if err != nil {
@@ -79,14 +92,14 @@ func (db *Database) ScanAndLoadData() error {
 				fName := f.Name()
 				if strings.HasPrefix(fName, "shard_") {
 					// loading the shard main data
-					if strings.HasSuffix(fName, ".jsonlist") {
+					if strings.HasSuffix(fName, ".gobs") {
 						fi, err := os.Open(collectionPath + "/" + fName)
 						if err != nil {
 							return errors.New("collection (" + fName + ") shard (" + fName + ") is unavailable")
 						}
 						files[loaded] = fi
 						// loading the meta
-						fName := strings.TrimSuffix(fName, ".jsonlist") + "_meta.gob.gzip"
+						fName := strings.TrimSuffix(fName, ".gobs") + "_meta.gob.gzip"
 						p := NewEncodedCompressedPackage(collectionPath + "/" + fName)
 						dec, err := p.LoadDecoder()
 						if err != nil {
@@ -104,7 +117,7 @@ func (db *Database) ScanAndLoadData() error {
 						loaded++
 					}
 
-				// loading the map index
+					// loading the map index
 				} else if f.Name() == "map.index" {
 					inFile, _ := os.Open(collectionPath + "/" + fName)
 					scanner := bufio.NewScanner(inFile)
@@ -124,7 +137,7 @@ func (db *Database) ScanAndLoadData() error {
 					inFile.Close()
 					mapIndexLoaded = true
 
-				// loading the collection's description
+					// loading the collection's description
 				} else if f.Name() == cNameExt {
 					data, err := NewCompressedPackage(collectionPath + "/" + cNameExt).Load()
 					if err != nil {
@@ -147,6 +160,7 @@ func (db *Database) ScanAndLoadData() error {
 			}
 
 			collection.Map = cm
+			collection.Cache = NewCollectionCache()
 
 			db.collectionMutex.Lock()
 			db.collections[c.Name()] = collection
@@ -170,7 +184,7 @@ func (db *Database) Sync() error {
 			log.Println("Synchronizing " + cl.Name)
 			err := cl.Sync()
 			if err != nil {
-				log.Println("Collection " + cl.Name + " syncronization failed:", err.Error())
+				log.Println("Collection "+cl.Name+" syncronization failed:", err.Error())
 			}
 			wg.Done()
 		}(c)
@@ -184,7 +198,7 @@ func (db *Database) Sync() error {
 		return err
 	}
 
-	return ioutil.WriteFile(db.Name + ".shardb", data, os.ModePerm)
+	return ioutil.WriteFile(db.Name+".shardb", data, os.ModePerm)
 }
 
 func (db *Database) GetCollectionsCount() int {
@@ -227,7 +241,7 @@ func (db *Database) AddCollection(name string) error {
 	path := COLLECTION_DIR_NAME + "/" + name
 	os.MkdirAll(path, os.ModePerm)
 	for i := 0; i < SHARD_COUNT; i++ {
-		f, err := os.Create(path + "/shard_" + strconv.Itoa(i) + ".jsonlist")
+		f, err := os.Create(path + "/shard_" + strconv.Itoa(i) + ".gobs")
 		if err != nil {
 			return errors.New("failed to create a shard")
 		}
@@ -235,7 +249,7 @@ func (db *Database) AddCollection(name string) error {
 	}
 
 	db.collectionMutex.Lock()
-	db.collections[name] = NewCollection(path, name, NewConcurrentMap(path, files), createUniqueIdIndex(), make(map[string]int))
+	db.collections[name] = NewCollection(path, name, NewConcurrentMap(path, files), createUniqueIdIndex(), make(map[string]*int))
 	db.collectionMutex.Unlock()
 
 	return nil

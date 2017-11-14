@@ -1,26 +1,26 @@
 package db
 
 import (
-	"os"
-	"sync"
 	"errors"
 	"math/rand"
+	"os"
 	"strconv"
+	"sync"
 )
 
 // A "thread" safe string to anything map.
 type ConcurrentMapShared struct {
-	Id    int                    `json:"id"`
-	Items map[string]interface{} `json:"items"`
-	file  *os.File               `json:"-"`
+	Id    int                     `json:"id"`
+	Items map[string]*ShardOffset `json:"items"`
+	file  *os.File                `json:"-"`
 
-	mx 	  sync.RWMutex // Read Write mutex, guards access to internal map.
+	mx sync.RWMutex // Read Write mutex, guards access to internal map.
 
 	SyncDestination string
 }
 
 func NewConcurrentMapShared(syncDest string, id int, f *os.File) *ConcurrentMapShared {
-	return &ConcurrentMapShared{Id: id, Items: make(map[string]interface{}), file: f, SyncDestination: syncDest}
+	return &ConcurrentMapShared{Id: id, Items: make(map[string]*ShardOffset), file: f, SyncDestination: syncDest}
 }
 
 func (shard *ConcurrentMapShared) Lock() {
@@ -41,18 +41,7 @@ func (shard *ConcurrentMapShared) RUnlock() {
 
 func (shard *ConcurrentMapShared) Sync() error {
 	shard.mx.RLock()
-	/*data, err := json.Marshal(shard)
-	if err != nil {
-		return err
-	}*/
-	/*
-	enc := gob.NewEncoder(&data)
-	err := enc.Encode(shard)
-	if err != nil {
-		return err
-	}
-	err = ioutil.WriteFile(shard.SyncDestination+ "/shard_" + strconv.Itoa(shard.Id) + "_meta.gob", data.Bytes(), os.ModePerm)*/
-	p := NewEncodedCompressedPackage(shard.SyncDestination+ "/shard_" + strconv.Itoa(shard.Id) + "_meta.gob.gzip")
+	p := NewEncodedCompressedPackage(shard.SyncDestination + "/shard_" + strconv.Itoa(shard.Id) + "_meta.gob.gzip")
 	p.SetData(shard)
 	err := p.Save()
 	if err != nil {
@@ -64,7 +53,7 @@ func (shard *ConcurrentMapShared) Sync() error {
 }
 
 //! Not intended to be used in production environment
-func (shard *ConcurrentMapShared) GetRandomItem() (string, interface{}, error) {
+func (shard *ConcurrentMapShared) GetRandomItem() (string, *ShardOffset, error) {
 	ln := len(shard.Items)
 	if ln <= 0 {
 		return "", nil, errors.New("shard is empty")
@@ -73,8 +62,9 @@ func (shard *ConcurrentMapShared) GetRandomItem() (string, interface{}, error) {
 	s, i := shard.GetItemWithNumber(rand.Intn(len(shard.Items)))
 	return s, i, nil
 }
+
 //! Not intended to be used in production environment
-func (shard *ConcurrentMapShared) GetItemWithNumber(n int) (string, interface{}) {
+func (shard *ConcurrentMapShared) GetItemWithNumber(n int) (string, *ShardOffset) {
 	i := 0
 	for k, v := range shard.Items {
 		if i >= n {
