@@ -26,8 +26,9 @@ type ConcurrentMap struct {
 }
 
 type ShardOffset struct {
-	Start  int64 `json:"s"`
-	Length int   `json:"l"`
+	Start   int64 `json:"s"`
+	Length  int   `json:"l"`
+	Deleted bool  `json:"!,omitempty"`
 }
 
 var nextLineBytes = []byte("\n")
@@ -49,6 +50,16 @@ func (cm *ConcurrentMap) Flush() error {
 		shard.Unlock()
 	}
 	return nil
+}
+
+func (cm *ConcurrentMap) OptimizeShards() (err error) {
+	for _, shard := range cm.Shared {
+		err = shard.Optimize()
+		if err != nil {
+			return err
+		}
+	}
+	return
 }
 
 func (cm *ConcurrentMap) SetCounterIndex(value uint64) error {
@@ -111,6 +122,51 @@ func (m *ConcurrentMap) ReadAtOffset(shard *ConcurrentMapShared, offset *ShardOf
 	return data, err
 }
 
+func (m *ConcurrentMap) DeleteById(shard *ConcurrentMapShared, id string) {
+	m.DeleteByUniqueKey(shard, "id", id)
+}
+
+func (m *ConcurrentMap) DeleteByUniqueKey(shard *ConcurrentMapShared, key, value string) {
+	shard.Lock()
+	idKey := key + ":" + value
+	offset := shard.Items[idKey]
+	offset.Deleted = true
+	shard.Unlock()
+}
+
+func (m *ConcurrentMap) DeleteByKey(key, value string, limit int) int {
+	counter := 0
+	for n := 0; n < SHARD_COUNT; n++ {
+		shard := m.Shared[n]
+		shard.Lock()
+		kv := key + ":" + value
+		en := ":" + kv
+		length := shard.GetEnumerator(kv)
+		tempKey := ""
+		for i := length - 1; i >= 0; i-- {
+			tempKey = strconv.Itoa(i) + en
+			if item, ok := shard.Items[tempKey]; ok {
+				if item.Deleted {
+					continue
+				}
+				item.Deleted = true
+				//shard.Items[tempKey] = item
+				counter++
+				if counter == limit {
+					shard.Unlock()
+					return limit
+				}
+			} else {
+				break
+			}
+			i++
+		}
+		shard.SetEnumerator(kv, length-counter)
+		shard.Unlock()
+	}
+	return counter
+}
+
 func (m *ConcurrentMap) FindById(shard *ConcurrentMapShared, id string) ([]byte, error) {
 	return m.FindByUniqueKey(shard, "id", id)
 }
@@ -129,9 +185,9 @@ func (m *ConcurrentMap) FindByKeyInShard(shard *ConcurrentMapShared, key, value 
 	shard.RLock()
 	defer shard.RUnlock()
 
-	i := 0
 	kv := ":" + key + ":" + value
 	results := make([][]byte, 0, limit)
+	i := 0
 	for {
 		if item, ok := shard.Items[strconv.Itoa(i)+kv]; ok {
 			data, err := m.ReadAtOffset(shard, item)
@@ -152,11 +208,11 @@ func (m *ConcurrentMap) FindByKeyInShard(shard *ConcurrentMapShared, key, value 
 
 func (m *ConcurrentMap) FindByKey(key, value string, limit int) ([][]byte, error) {
 	results := make([][]byte, 0, limit)
+	kv := ":" + key + ":" + value
 	for n := 0; n < SHARD_COUNT; n++ {
 		shard := m.Shared[n]
 		shard.Lock()
 		i := 0
-		kv := ":" + key + ":" + value
 		for {
 			if item, ok := shard.Items[strconv.Itoa(i)+kv]; ok {
 				data, err := m.ReadAtOffset(shard, item)
@@ -193,7 +249,7 @@ func (m *ConcurrentMap) Set(indexData []*FullDataIndex, value interface{}) (map[
 	shard.Lock()
 	defer shard.Unlock()
 
-	// Write to the file
+	// Write to the end of the file
 	ret, err := shard.file.Seek(0, 2)
 	if err != nil {
 		return nil, err
@@ -210,10 +266,11 @@ func (m *ConcurrentMap) Set(indexData []*FullDataIndex, value interface{}) (map[
 	destMap := make(map[string]*int)
 	pId := &shard.Id
 
-	offset := ShardOffset{ret, n}
+	offset := ShardOffset{ret, n, false}
 	if indexData != nil {
 		for _, ix := range indexData {
 			fullKey := ix.Field + ":" + ix.Data
+			// Unique index key
 			if ix.Unique {
 				if _, ok := shard.Items[fullKey]; ok {
 					return nil, errors.New("unique primary key duplicate")
@@ -221,7 +278,8 @@ func (m *ConcurrentMap) Set(indexData []*FullDataIndex, value interface{}) (map[
 				shard.Items[fullKey] = &offset
 				destMap[fullKey] = pId
 			} else {
-				index := 0
+				// Regular key
+				index := shard.GetEnumerator(fullKey)
 				lastAvailable := ""
 				for {
 					lastAvailable = strconv.Itoa(index) + ":" + fullKey
@@ -232,6 +290,7 @@ func (m *ConcurrentMap) Set(indexData []*FullDataIndex, value interface{}) (map[
 					}
 				}
 				shard.Items[lastAvailable] = &offset
+				shard.SetEnumerator(fullKey, index)
 				destMap[lastAvailable] = pId
 			}
 		}

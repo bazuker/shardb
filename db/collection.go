@@ -31,7 +31,7 @@ type Collection struct {
 	ShardDestinations map[string]*int `json:"dests"`
 	sharedDestMx      sync.RWMutex    `json:"-"`
 
-	ObjectsCounter  uint64 `json:"objects"`
+	ObjectsCounter  int64  `json:"objects"`
 	SyncDestination string `json:"sync_dest"`
 }
 
@@ -95,6 +95,10 @@ func (c *Collection) DecodeElement(data []byte) (*Element, error) {
 	return e, gob.NewDecoder(bytes.NewReader(data)).Decode(e)
 }
 
+func (c *Collection) Size() int64 {
+	return atomic.LoadInt64(&c.ObjectsCounter)
+}
+
 func (c *Collection) Sync() (err error) {
 	err = c.Map.Flush()
 	if err != nil {
@@ -120,8 +124,53 @@ func (c *Collection) Sync() (err error) {
 	return p.Save()
 }
 
-func (c *Collection) Size() uint64 {
-	return atomic.LoadUint64(&c.ObjectsCounter)
+func (c *Collection) Compress() error {
+	return c.Map.OptimizeShards()
+}
+
+// Part of the memory will be marked as "deleted". Actual memory will be released after compression
+func (c *Collection) DeleteById(id string) error {
+	idKey := "id:" + id
+	c.Cache.Set(idKey, nil)
+
+	shard, err := c.getShardByKeySafe(idKey)
+	if err != nil {
+		return err
+	}
+
+	c.Map.DeleteById(shard, id)
+	c.sharedDestMx.Lock()
+	delete(c.ShardDestinations, idKey)
+	atomic.AddInt64(&c.ObjectsCounter, -1)
+	c.sharedDestMx.Unlock()
+
+	return nil
+}
+
+func (c *Collection) DeleteN(entry CustomStructure, limit int) (int, error) {
+	indexes := entry.GetDataIndex()
+	counter := 0
+	for _, ix := range indexes {
+		if ix.Data == "" {
+			continue
+		}
+		if ix.Unique {
+			err := c.deleteDataByUniqueIndex(entry, ix)
+			if err != nil {
+				return -1, err
+			}
+			counter++
+		} else {
+			counter += c.deleteDataByIndex(entry, ix, limit)
+		}
+	}
+	atomic.AddInt64(&c.ObjectsCounter, -int64(counter))
+	return counter, nil
+}
+
+func (c *Collection) Delete(entry CustomStructure) (int, error) {
+	const limit = 1000
+	return c.DeleteN(entry, limit)
 }
 
 func (c *Collection) Write(payload CustomStructure) error {
@@ -137,39 +186,19 @@ func (c *Collection) Write(payload CustomStructure) error {
 	c.sharedDestMx.Unlock()
 
 	destMap = nil
-	atomic.AddUint64(&c.ObjectsCounter, 1)
+	atomic.AddInt64(&c.ObjectsCounter, 1)
 
 	return nil
 }
 
-func (c *Collection) getShardByKey(key string) *ConcurrentMapShared {
-	c.sharedDestMx.RLock()
-	defer c.sharedDestMx.RUnlock()
-	return c.Map.Shared[*c.ShardDestinations[key]]
-}
-
-func (c *Collection) scanDataByUniqueIndex(entry CustomStructure, index *FullDataIndex) ([]byte, error) {
-	shard := c.getShardByKey(index.Field + ":" + index.Data)
-	return c.Map.FindByUniqueKey(shard, index.Field, index.Data)
-}
-
-func (c *Collection) scanDataByIndex(entry CustomStructure, index *FullDataIndex, limit int) ([][]byte, error) {
-	data, err := c.Map.FindByKey(index.Field, index.Data, limit)
-	if err != nil {
-		return nil, err
-	} else if len(data) == 0 {
-		return nil, errors.New("zero results")
-	}
-	return data, nil
-}
-
 func (c *Collection) FindById(id string) ([]byte, error) {
-	data, err := c.Cache.Get("id:" + id)
+	idKey := "id:" + id
+	data, err := c.Cache.Get(idKey)
 	if err == nil {
 		return data, nil
 	}
 
-	shard := c.getShardByKey(id)
+	shard := c.getShardByKey(idKey)
 	data, err = c.Map.FindById(shard, id)
 	if err != nil {
 		return nil, err
@@ -177,25 +206,6 @@ func (c *Collection) FindById(id string) ([]byte, error) {
 	c.Cache.Set("id:"+id, data)
 
 	return data, nil
-}
-
-func (c *Collection) Scan(entry CustomStructure) ([]byte, error) {
-	indexes := entry.GetDataIndex()
-	for _, ix := range indexes {
-		if ix.Data == "" {
-			continue
-		}
-		if ix.Unique {
-			return c.scanDataByUniqueIndex(entry, ix)
-		} else {
-			data, err := c.scanDataByIndex(entry, ix, 1)
-			if err != nil {
-				return nil, err
-			}
-			return data[0], nil
-		}
-	}
-	return nil, errors.New("no matching data")
 }
 
 func (c *Collection) ScanN(entry CustomStructure, limit int) ([][]byte, error) {
@@ -217,7 +227,61 @@ func (c *Collection) ScanN(entry CustomStructure, limit int) ([][]byte, error) {
 	return nil, errors.New("no matching data")
 }
 
-func (c *Collection) ScanAll(entry CustomStructure) ([][]byte, error) {
+func (c *Collection) ScanOne(entry CustomStructure) ([]byte, error) {
+	data, err := c.ScanN(entry, 1)
+	if err != nil {
+		return nil, err
+	}
+	return data[0], nil
+}
+
+func (c *Collection) Scan(entry CustomStructure) ([][]byte, error) {
 	const limit = 1000
 	return c.ScanN(entry, limit)
+}
+
+func (c *Collection) getShardByKey(key string) *ConcurrentMapShared {
+	c.sharedDestMx.RLock()
+	defer c.sharedDestMx.RUnlock()
+	return c.Map.Shared[*c.ShardDestinations[key]]
+}
+
+func (c *Collection) getShardByKeySafe(key string) (*ConcurrentMapShared, error) {
+	c.sharedDestMx.RLock()
+	defer c.sharedDestMx.RUnlock()
+	if dest, ok := c.ShardDestinations[key]; ok {
+		return c.Map.Shared[*dest], nil
+	}
+	return nil, errors.New("invalid shard destination")
+}
+
+func (c *Collection) deleteDataByUniqueIndex(entry CustomStructure, index *FullDataIndex) error {
+	shard, err := c.getShardByKeySafe(index.Field + ":" + index.Data)
+	if err != nil {
+		return err
+	}
+	c.Map.DeleteByUniqueKey(shard, index.Field, index.Data)
+	return nil
+}
+
+func (c *Collection) deleteDataByIndex(entry CustomStructure, index *FullDataIndex, limit int) int {
+	return c.Map.DeleteByKey(index.Field, index.Data, limit)
+}
+
+func (c *Collection) scanDataByUniqueIndex(entry CustomStructure, index *FullDataIndex) ([]byte, error) {
+	shard, err := c.getShardByKeySafe(index.Field + ":" + index.Data)
+	if err != nil {
+		return nil, err
+	}
+	return c.Map.FindByUniqueKey(shard, index.Field, index.Data)
+}
+
+func (c *Collection) scanDataByIndex(entry CustomStructure, index *FullDataIndex, limit int) ([][]byte, error) {
+	data, err := c.Map.FindByKey(index.Field, index.Data, limit)
+	if err != nil {
+		return nil, err
+	} else if len(data) == 0 {
+		return nil, errors.New("zero results")
+	}
+	return data, nil
 }

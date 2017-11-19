@@ -9,10 +9,7 @@ import (
 	"time"
 )
 
-var (
-	database *db.Database
-	wg       = new(sync.WaitGroup)
-)
+var wg = new(sync.WaitGroup)
 
 const letterBytes = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ"
 
@@ -51,7 +48,7 @@ func fillUpCollection(c *db.Collection, total, threads int) {
 }
 
 func RunGeneralExample() {
-	database = db.NewDatabase("test")
+	database := db.NewDatabase("test")
 	InitCustomTypes(database)
 
 	fmt.Println("Scanning and loading the data...")
@@ -75,7 +72,7 @@ func RunGeneralExample() {
 
 		rand.Seed(time.Now().UnixNano())
 
-		total := 10000
+		total := 100000
 		threads := 4
 
 		// filling the collections with random data
@@ -121,8 +118,8 @@ func RunGeneralExample() {
 	// scan all
 	p2 := Person{Age: p.Age}
 	start = time.Now()
-	results, err := randCol.ScanAll(&p2)
-	fmt.Println("Search (ScanAll) took", time.Now().Sub(start))
+	results, err := randCol.Scan(&p2)
+	fmt.Println("Search (Scan) took", time.Now().Sub(start))
 	checkErr(err)
 
 	resultsLen := len(results)
@@ -137,7 +134,7 @@ func RunGeneralExample() {
 	// single scan
 	fmt.Println()
 	start = time.Now()
-	data, err := randCol.Scan(p)
+	data, err := randCol.ScanOne(p)
 	checkErr(err)
 
 	el, err := randCol.DecodeElement(data)

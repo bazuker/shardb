@@ -209,11 +209,11 @@ func (db *Database) GetCollectionsCount() int {
 	return len(db.collections)
 }
 
-func (db *Database) GetTotalObjectsCount() uint64 {
+func (db *Database) GetTotalObjectsCount() int64 {
 	db.collectionMutex.RLock()
 	defer db.collectionMutex.RUnlock()
 
-	total := uint64(0)
+	total := int64(0)
 	for _, v := range db.collections {
 		total += v.Size()
 	}
