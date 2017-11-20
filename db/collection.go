@@ -23,10 +23,9 @@ type FullDataIndex struct {
 }
 
 type Collection struct {
-	Name    string         `json:"name"`
-	Map     *ConcurrentMap `json:"-"`
-	Cache   *bigcache.BigCache
-	Indexes []*Index
+	Name  string             `json:"name"`
+	Map   *ConcurrentMap     `json:"-"`
+	Cache *bigcache.BigCache `json:"-"`
 
 	ShardDestinations map[string]*int `json:"dests"`
 	sharedDestMx      sync.RWMutex    `json:"-"`
@@ -66,8 +65,8 @@ func NewCollectionCache() *bigcache.BigCache {
 	return bc
 }
 
-func NewCollection(path, name string, cm *ConcurrentMap, indexes []*Index, sd map[string]*int) *Collection {
-	return &Collection{name, cm, NewCollectionCache(), indexes,
+func NewCollection(path, name string, cm *ConcurrentMap, sd map[string]*int) *Collection {
+	return &Collection{name, cm, NewCollectionCache(),
 		sd, sync.RWMutex{}, 0, path}
 }
 
@@ -76,12 +75,10 @@ func (c *Collection) GetRandomAliveObject() (string, *Element, error) {
 	if shard == nil {
 		return "", nil, errors.New("collections does not have any shards")
 	}
-
 	key, offset, err := shard.GetRandomItem()
 	if err != nil {
 		return "", nil, err
 	}
-
 	data, err := c.Map.ReadAtOffset(shard, offset)
 	if err != nil {
 		return "", nil, err
@@ -106,22 +103,18 @@ func (c *Collection) Sync() (err error) {
 		// very critical error
 		return err
 	}
-
 	err = c.Map.Sync()
 	if err != nil {
 		return err
 	}
-
 	c.sharedDestMx.Lock()
 	defer c.sharedDestMx.Unlock()
-
 	data, err := json.Marshal(c)
 	if err != nil {
 		return err
 	}
 	p := NewCompressedPackage(c.SyncDestination + "/" + c.Name + ".json.gzip")
 	p.SetData(data)
-
 	return p.Save()
 }
 
@@ -129,20 +122,21 @@ func (c *Collection) Optimize() (int64, error) {
 	return c.Map.OptimizeShards()
 }
 
-// Part of the memory will be marked as "deleted". Actual memory will be released after compression
+func (c *Collection) Restore(entry CustomStructure) error {
+	return errors.New("failed to restore")
+}
+
+// part of the memory will be marked as "deleted". Actual memory will be released after compression
 func (c *Collection) DeleteById(id string) error {
 	idKey := "id:" + id
 	c.Cache.Set(idKey, nil)
-
 	shard, err := c.getShardByKeySafe(idKey)
 	if err != nil {
 		return err
 	}
-
 	c.Map.DeleteById(shard, id)
 	c.deleteDestination(idKey)
 	atomic.AddInt64(&c.ObjectsCounter, -1)
-
 	return nil
 }
 
@@ -177,16 +171,13 @@ func (c *Collection) Write(payload CustomStructure) error {
 	if err != nil {
 		return err
 	}
-
 	c.sharedDestMx.Lock()
 	for k, v := range destMap {
 		c.ShardDestinations[k] = v
 	}
 	c.sharedDestMx.Unlock()
-
 	destMap = nil
 	atomic.AddInt64(&c.ObjectsCounter, 1)
-
 	return nil
 }
 
@@ -196,14 +187,12 @@ func (c *Collection) FindById(id string) ([]byte, error) {
 	if err == nil {
 		return data, nil
 	}
-
 	shard := c.getShardByKey(idKey)
 	data, err = c.Map.FindById(shard, id)
 	if err != nil {
 		return nil, err
 	}
 	c.Cache.Set("id:"+id, data)
-
 	return data, nil
 }
 

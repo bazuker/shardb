@@ -31,8 +31,6 @@ type ShardOffset struct {
 	Deleted bool  `json:"!,omitempty"`
 }
 
-var nextLineBytes = []byte("\n")
-
 func (cm *ConcurrentMap) GetRandomShard() *ConcurrentMapShared {
 	return cm.Shared[rand.Intn(len(cm.Shared))]
 }
@@ -68,11 +66,9 @@ func (cm *ConcurrentMap) SetCounterIndex(value uint64) error {
 	if value >= uint64(SHARD_COUNT) || value < 0 {
 		return errors.New("invalid value")
 	}
-
 	cm.counterMx.Lock()
 	cm.counter = value
 	cm.counterMx.Unlock()
-
 	return nil
 }
 
@@ -84,12 +80,10 @@ func (cm *ConcurrentMap) Sync() (err error) {
 			return err
 		}
 	}
-
 	cm.counterMx.Lock()
 	err = ioutil.WriteFile(cm.SyncDestination+"/map.index",
 		[]byte(strconv.FormatUint(cm.counter, 10)+"\n"+cm.SyncDestination), os.ModePerm)
 	cm.counterMx.Unlock()
-
 	return err
 }
 
@@ -123,6 +117,37 @@ func (m *ConcurrentMap) ReadAtOffset(shard *ConcurrentMapShared, offset *ShardOf
 	data := make([]byte, offset.Length)
 	_, err := shard.file.ReadAt(data, offset.Start)
 	return data, err
+}
+
+func (m *ConcurrentMap) RestoreByKey(key, value string, limit int) {
+	counter := 0
+	for n := 0; n < SHARD_COUNT; n++ {
+		shard := m.Shared[n]
+		shard.Lock()
+		kv := key + ":" + value
+		en := ":" + kv
+		length := shard.GetEnumerator(kv)
+		tempKey := ""
+		for i := length - 1; i >= 0; i-- {
+			tempKey = strconv.Itoa(i) + en
+			if item, ok := shard.Items[tempKey]; ok {
+				if !item.Deleted {
+					continue
+				}
+				item.Deleted = false
+				counter++
+				if counter == limit {
+					shard.Unlock()
+					return
+				}
+			} else {
+				break
+			}
+			i++
+		}
+		shard.SetEnumerator(kv, length+counter)
+		shard.Unlock()
+	}
 }
 
 func (m *ConcurrentMap) DeleteById(shard *ConcurrentMapShared, id string) {
@@ -240,32 +265,28 @@ func (m *ConcurrentMap) FindByKey(key, value string, limit int) ([][]byte, error
 
 func (m *ConcurrentMap) Set(indexData []*FullDataIndex, value interface{}) (map[string]*int, error) {
 	idStr := xid.New().String()
-	// Marshal the payload
+	// marshal the payload
 	elem := Element{idStr, value}
 	encodedData, err := EncodeGob(elem)
 	if err != nil {
 		return nil, err
 	}
-
-	// Get map shard
+	// get map shard
 	shard := m.GetNextShard()
 	shard.Lock()
 	defer shard.Unlock()
-
-	// Write to the end of the file
+	// write to the end of the file
 	ret, err := shard.file.Seek(0, 2)
 	if err != nil {
 		return nil, err
 	}
-
+	// write encoded data to the file
 	n := 0
 	n, err = shard.file.Write(encodedData)
 	if err != nil {
 		return nil, err
 	}
-	n2, _ := shard.file.Write(nextLineBytes)
-
-	n += n2
+	// write "next line" symbol to the file
 	destMap := make(map[string]*int)
 	pId := &shard.Id
 
@@ -301,7 +322,6 @@ func (m *ConcurrentMap) Set(indexData []*FullDataIndex, value interface{}) (map[
 	idKey := "id:" + idStr
 	shard.Items[idKey] = &offset
 	destMap[idKey] = pId
-
 	return destMap, nil
 }
 

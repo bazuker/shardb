@@ -270,7 +270,7 @@ func (db *Database) AddCollection(name string) error {
 	}
 
 	db.collectionMutex.Lock()
-	db.collections[name] = NewCollection(path, name, NewConcurrentMap(path, files), createUniqueIdIndex(), make(map[string]*int))
+	db.collections[name] = NewCollection(path, name, NewConcurrentMap(path, files), make(map[string]*int))
 	db.collectionMutex.Unlock()
 
 	return nil
