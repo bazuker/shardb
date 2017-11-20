@@ -46,7 +46,7 @@ func RunDeleteExample() {
 		if err != nil {
 			panic(err)
 		}
-		fmt.Println("Optimization removed", size, "redundand bytes of data")
+		fmt.Println("Optimization removed", size, "redundant bytes of data")
 
 		err = database.Sync()
 		if err != nil {
