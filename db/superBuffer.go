@@ -39,7 +39,7 @@ func (super *SuperBuffer) Bytes() []byte {
 }
 
 func (super *SuperBuffer) Cut(position int64, length int) {
-	dataRight := super.b[int(position)+length:]
+	dataRight := super.b[position+int64(length):]
 	dataLeft := super.b[:position]
 	super.b = append(dataLeft, dataRight...)
 	super.buffer = bytes.NewBuffer(super.b)
