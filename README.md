@@ -1,4 +1,4 @@
-# shardb
+# shardb v0.1
 Fast and flexible database where increase in amount of data does not affect the search speed.
 
 Search can be performed based on primary keys for every type of structure.

@@ -54,6 +54,7 @@ func (db *Database) RegisterType(value CustomStructure) {
 	gob.Register(value)
 }
 
+// delete redundant data from all of the existing collections
 func (db *Database) Optimize() (n int64, err error) {
 	db.collectionMutex.Lock()
 	n = 0
@@ -68,6 +69,7 @@ func (db *Database) Optimize() (n int64, err error) {
 	return n, err
 }
 
+// load the database
 func (db *Database) ScanAndLoadData(path string) error {
 	ln := len(path)
 	if ln > 0 && path[len(path)-1] != '\\' {
@@ -193,6 +195,7 @@ func (db *Database) ScanAndLoadData(path string) error {
 	return nil
 }
 
+// synchronizes the database with the hard drive
 func (db *Database) Sync() error {
 	db.collectionMutex.RLock()
 	wg := sync.WaitGroup{}

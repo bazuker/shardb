@@ -52,6 +52,7 @@ func (cm *ConcurrentMap) Flush() error {
 	return nil
 }
 
+// deletes redundant data from the drive
 // n - total sized of the data that has been removed
 func (cm *ConcurrentMap) OptimizeShards() (n int64, err error) {
 	for _, shard := range cm.Shared {
@@ -75,6 +76,7 @@ func (cm *ConcurrentMap) SetCounterIndex(value uint64) error {
 	return nil
 }
 
+// synchronizes database with the drive
 func (cm *ConcurrentMap) Sync() (err error) {
 	for _, shard := range cm.Shared {
 		err = shard.Sync()
@@ -129,14 +131,14 @@ func (m *ConcurrentMap) DeleteById(shard *ConcurrentMapShared, id string) {
 
 func (m *ConcurrentMap) DeleteByUniqueKey(shard *ConcurrentMapShared, key, value string) {
 	shard.Lock()
-	idKey := key + ":" + value
-	offset := shard.Items[idKey]
+	offset := shard.Items[key+":"+value]
 	offset.Deleted = true
 	shard.Unlock()
 }
 
-func (m *ConcurrentMap) DeleteByKey(key, value string, limit int) int {
+func (m *ConcurrentMap) DeleteByKey(key, value string, limit int) (deletedDests []string) {
 	counter := 0
+	deletedDests = make([]string, 0)
 	for n := 0; n < SHARD_COUNT; n++ {
 		shard := m.Shared[n]
 		shard.Lock()
@@ -151,11 +153,11 @@ func (m *ConcurrentMap) DeleteByKey(key, value string, limit int) int {
 					continue
 				}
 				item.Deleted = true
-				//shard.Items[tempKey] = item
+				deletedDests = append(deletedDests, tempKey)
 				counter++
 				if counter == limit {
 					shard.Unlock()
-					return limit
+					return deletedDests
 				}
 			} else {
 				break
@@ -165,7 +167,7 @@ func (m *ConcurrentMap) DeleteByKey(key, value string, limit int) int {
 		shard.SetEnumerator(kv, length-counter)
 		shard.Unlock()
 	}
-	return counter
+	return deletedDests
 }
 
 func (m *ConcurrentMap) FindById(shard *ConcurrentMapShared, id string) ([]byte, error) {

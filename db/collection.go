@@ -99,6 +99,7 @@ func (c *Collection) Size() int64 {
 	return atomic.LoadInt64(&c.ObjectsCounter)
 }
 
+// synchronizes the collection with the hard drive
 func (c *Collection) Sync() (err error) {
 	err = c.Map.Flush()
 	if err != nil {
@@ -139,10 +140,8 @@ func (c *Collection) DeleteById(id string) error {
 	}
 
 	c.Map.DeleteById(shard, id)
-	c.sharedDestMx.Lock()
-	delete(c.ShardDestinations, idKey)
+	c.deleteDestination(idKey)
 	atomic.AddInt64(&c.ObjectsCounter, -1)
-	c.sharedDestMx.Unlock()
 
 	return nil
 }
@@ -261,11 +260,24 @@ func (c *Collection) deleteDataByUniqueIndex(entry CustomStructure, index *FullD
 		return err
 	}
 	c.Map.DeleteByUniqueKey(shard, index.Field, index.Data)
+	c.deleteDestination(index.Field + ":" + index.Data)
 	return nil
 }
 
 func (c *Collection) deleteDataByIndex(entry CustomStructure, index *FullDataIndex, limit int) int {
-	return c.Map.DeleteByKey(index.Field, index.Data, limit)
+	deletedDests := c.Map.DeleteByKey(index.Field, index.Data, limit)
+	c.sharedDestMx.Lock()
+	for _, d := range deletedDests {
+		delete(c.ShardDestinations, d)
+	}
+	c.sharedDestMx.Unlock()
+	return len(deletedDests)
+}
+
+func (c *Collection) deleteDestination(key string) {
+	c.sharedDestMx.Lock()
+	delete(c.ShardDestinations, key)
+	c.sharedDestMx.Unlock()
 }
 
 func (c *Collection) scanDataByUniqueIndex(entry CustomStructure, index *FullDataIndex) ([]byte, error) {
