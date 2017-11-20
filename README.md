@@ -22,10 +22,17 @@ if err != nil {
 }
 if database.GetCollectionsCount() <= 0 {
     database.AddCollection("some_collection")
-    err = database.GetCollection("c1").Write(&Person("Login", "Name", 20))
+    c := database.GetCollection("c1")
+    p := Person("Login", "Name", 20)
+    err = c.Write(&p)
     if err != nil {
         panic(err)
     }
+    _, err = c.Delete(&p)
+    if err != nil {
+        panic(err)
+    }
+    database.Optimize()
     database.Sync()
 }
 ```

@@ -54,6 +54,20 @@ func (db *Database) RegisterType(value CustomStructure) {
 	gob.Register(value)
 }
 
+func (db *Database) Optimize() (n int64, err error) {
+	db.collectionMutex.Lock()
+	n = 0
+	for _, c := range db.collections {
+		opt, err := c.Optimize()
+		if err != nil {
+			return 0, err
+		}
+		n += opt
+	}
+	db.collectionMutex.Unlock()
+	return n, err
+}
+
 func (db *Database) ScanAndLoadData(path string) error {
 	ln := len(path)
 	if ln > 0 && path[len(path)-1] != '\\' {
