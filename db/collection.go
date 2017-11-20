@@ -124,7 +124,7 @@ func (c *Collection) Sync() (err error) {
 	return p.Save()
 }
 
-func (c *Collection) Compress() error {
+func (c *Collection) Optimize() (int64, error) {
 	return c.Map.OptimizeShards()
 }
 

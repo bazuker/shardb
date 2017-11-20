@@ -52,11 +52,12 @@ func (cm *ConcurrentMap) Flush() error {
 	return nil
 }
 
-func (cm *ConcurrentMap) OptimizeShards() (err error) {
+// n - total sized of the data that has been removed
+func (cm *ConcurrentMap) OptimizeShards() (n int64, err error) {
 	for _, shard := range cm.Shared {
-		err = shard.Optimize()
+		n, err = shard.Optimize()
 		if err != nil {
-			return err
+			return n, err
 		}
 	}
 	return

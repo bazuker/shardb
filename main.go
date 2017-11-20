@@ -5,6 +5,6 @@ import (
 )
 
 func main() {
-	//examples.RunGeneralExample()
-	examples.RunDeleteExample()
+	examples.RunGeneralExample()
+	//examples.RunDeleteExample()
 }

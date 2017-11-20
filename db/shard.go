@@ -56,53 +56,57 @@ func (shard *ConcurrentMapShared) Sync() error {
 
 func (shard *ConcurrentMapShared) applyOffset(move, after int64) {
 	for _, item := range shard.Items {
-		if !item.Deleted && item.Start > after {
+		if item.Start > after {
 			item.Start -= move
 		}
 	}
 }
 
-func (shard *ConcurrentMapShared) Optimize() error {
+func (shard *ConcurrentMapShared) Optimize() (int64, error) {
 	shard.mx.Lock()
 	defer shard.mx.Unlock()
 
 	fi, err := shard.file.Stat()
 	if err != nil {
-		return err
+		return 0, err
+	}
+
+	_, err = shard.file.Seek(0, 0)
+	if err != nil {
+		return 0, err
 	}
 
 	// load the whole shard into the memory
-	_, err = shard.file.Seek(0, 0)
-	if err != nil {
-		return err
-	}
-
 	shardData := make([]byte, fi.Size())
 	_, err = shard.file.Read(shardData)
 	if err != nil {
-		return err
+		return 0, err
 	}
 	shard.file.Close()
+	buffer := NewSuperBuffer(shardData)
 
+	counter := int64(0)
 	// redistribute the data
 	for key, item := range shard.Items {
 		if item.Deleted {
-			shardData = append(shardData[:item.Start], shardData[item.Start+int64(item.Length):]...)
+			buffer.Cut(item.Start, item.Length)
 			shard.applyOffset(int64(item.Length), item.Start)
 			delete(shard.Items, key)
+			counter += int64(item.Length)
 		}
 	}
 
 	fName := shard.SyncDestination + "/" + fi.Name()
-	err = ioutil.WriteFile(fName, shardData, os.ModePerm)
+	err = ioutil.WriteFile(fName, buffer.Bytes(), os.ModePerm)
 	if err != nil {
-		return err
+		return 0, err
 	}
 
 	shardData = nil
+	buffer = nil
 	shard.file, err = os.Open(fName)
 
-	return err
+	return counter, err
 }
 
 //! Not intended to be used in production environment

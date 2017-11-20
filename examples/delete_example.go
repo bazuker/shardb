@@ -42,10 +42,11 @@ func RunDeleteExample() {
 		}
 		fmt.Println("deleted", deleted, "records")
 
-		err = randCol.Compress()
+		size, err := randCol.Optimize()
 		if err != nil {
 			panic(err)
 		}
+		fmt.Println("Optimization removed", size, "redundand bytes of data")
 
 		err = database.Sync()
 		if err != nil {
