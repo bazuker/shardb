@@ -22,7 +22,7 @@ if err != nil {
 }
 if database.GetCollectionsCount() <= 0 {
     database.AddCollection("some_collection")
-    c := database.GetCollection("c1")
+    c := database.GetCollection("some_collection")
     p := Person("Login", "Name", 20)
     err = c.Write(&p)
     if err != nil {
