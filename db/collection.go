@@ -208,9 +208,8 @@ func (c *Collection) ScanN(entry CustomStructure, limit int) ([][]byte, error) {
 				return nil, err
 			}
 			return [][]byte{data}, nil
-		} else {
-			return c.scanDataByIndex(entry, ix, limit)
 		}
+		return c.scanDataByIndex(entry, ix, limit)
 	}
 	return nil, errors.New("no matching data")
 }
