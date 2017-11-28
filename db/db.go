@@ -57,6 +57,7 @@ func (db *Database) RegisterType(value CustomStructure) {
 // delete redundant data from all of the existing collections
 func (db *Database) Optimize() (n int64, err error) {
 	db.collectionMutex.Lock()
+	defer db.collectionMutex.Unlock()
 	n = 0
 	for _, c := range db.collections {
 		opt, err := c.Optimize()
@@ -65,7 +66,6 @@ func (db *Database) Optimize() (n int64, err error) {
 		}
 		n += opt
 	}
-	db.collectionMutex.Unlock()
 	return n, err
 }
 
