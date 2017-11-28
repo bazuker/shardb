@@ -119,7 +119,7 @@ func (m *ConcurrentMap) ReadAtOffset(shard *ConcurrentMapShared, offset *ShardOf
 	return data, err
 }
 
-func (m *ConcurrentMap) RestoreByKey(key, value string, limit int) {
+func (m *ConcurrentMap) RestoreByKey(key, value string, limit int) int {
 	counter := 0
 	for n := 0; n < SHARD_COUNT; n++ {
 		shard := m.Shared[n]
@@ -138,7 +138,7 @@ func (m *ConcurrentMap) RestoreByKey(key, value string, limit int) {
 				counter++
 				if counter == limit {
 					shard.Unlock()
-					return
+					return limit
 				}
 			} else {
 				break
@@ -148,17 +148,31 @@ func (m *ConcurrentMap) RestoreByKey(key, value string, limit int) {
 		shard.SetEnumerator(kv, length+counter)
 		shard.Unlock()
 	}
+	return counter
 }
 
-func (m *ConcurrentMap) DeleteById(shard *ConcurrentMapShared, id string) {
-	m.DeleteByUniqueKey(shard, "id", id)
-}
-
-func (m *ConcurrentMap) DeleteByUniqueKey(shard *ConcurrentMapShared, key, value string) {
+func (m *ConcurrentMap) RestoreByUniqueKey(shard *ConcurrentMapShared, key, value string) error {
 	shard.Lock()
-	offset := shard.Items[key+":"+value]
-	offset.Deleted = true
-	shard.Unlock()
+	defer shard.Unlock()
+	if item, ok := shard.Items[key+":"+value]; ok {
+		item.Deleted = false
+		return nil
+	}
+	return errors.New("object footprint was already evicted")
+}
+
+func (m *ConcurrentMap) DeleteById(shard *ConcurrentMapShared, id string) error {
+	return m.DeleteByUniqueKey(shard, "id", id)
+}
+
+func (m *ConcurrentMap) DeleteByUniqueKey(shard *ConcurrentMapShared, key, value string) error {
+	shard.Lock()
+	defer shard.Unlock()
+	if item, ok := shard.Items[key+":"+value]; ok {
+		item.Deleted = true
+		return nil
+	}
+	return errors.New("object under specified unique key was not found")
 }
 
 func (m *ConcurrentMap) DeleteByKey(key, value string, limit int) (deletedDests []string) {
@@ -218,6 +232,10 @@ func (m *ConcurrentMap) FindByKeyInShard(shard *ConcurrentMapShared, key, value 
 	i := 0
 	for {
 		if item, ok := shard.Items[strconv.Itoa(i)+kv]; ok {
+			if item.Deleted {
+				continue
+			}
+
 			data, err := m.ReadAtOffset(shard, item)
 			if err != nil {
 				return nil, err
@@ -243,6 +261,10 @@ func (m *ConcurrentMap) FindByKey(key, value string, limit int) ([][]byte, error
 		i := 0
 		for {
 			if item, ok := shard.Items[strconv.Itoa(i)+kv]; ok {
+				if item.Deleted {
+					continue
+				}
+
 				data, err := m.ReadAtOffset(shard, item)
 				if err != nil {
 					shard.Unlock()
@@ -330,7 +352,7 @@ func (m *ConcurrentMap) Get(key string) (*ShardOffset, bool) {
 	// Get shard
 	shard := m.GetShard(key)
 	shard.RLock()
-	// Get item from shard.
+	// Get item from the shard.
 	val, ok := shard.Items[key]
 	shard.RUnlock()
 	return val, ok

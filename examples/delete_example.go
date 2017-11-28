@@ -42,6 +42,12 @@ func RunDeleteExample() {
 		}
 		fmt.Println("deleted", deleted, "records")
 
+		n, err := randCol.Restore(&p2)
+		if err != nil {
+			panic(err)
+		}
+		fmt.Println("restored", n, "records")
+
 		size, err := randCol.Optimize()
 		if err != nil {
 			panic(err)
