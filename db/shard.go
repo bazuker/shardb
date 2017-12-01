@@ -43,15 +43,10 @@ func (shard *ConcurrentMapShared) RUnlock() {
 
 func (shard *ConcurrentMapShared) Sync() error {
 	shard.mx.RLock()
+	defer shard.mx.RUnlock()
 	p := NewEncodedCompressedPackage(shard.SyncDestination + "/shard_" + strconv.Itoa(shard.Id) + "_meta.gob.gzip")
 	p.SetData(shard)
-	err := p.Save()
-	if err != nil {
-		return err
-	}
-	shard.mx.RUnlock()
-
-	return err
+	return p.Save()
 }
 
 func (shard *ConcurrentMapShared) applyOffset(move, after int64) {
