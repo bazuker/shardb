@@ -62,7 +62,7 @@ func (shard *ConcurrentMapShared) adjustCapacity(key string) {
 	fullKey := "n:" + key
 	if item, ok := shard.Capacities[fullKey]; ok {
 		item--
-		if item == 0 {
+		if item <= 0 {
 			shard.DeleteCapacityKey(key)
 			return
 		}
