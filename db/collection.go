@@ -73,6 +73,7 @@ func NewCollection(path, name string, cm *ConcurrentMap, sd map[string]*int) *Co
 		sd, sync.RWMutex{}, 0, path}
 }
 
+//! Not intended to use in production
 func (c *Collection) GetRandomAliveObject() (string, *Element, error) {
 	shard := c.Map.GetRandomShard()
 	if shard == nil {

@@ -6,15 +6,16 @@ import (
 	"math/rand"
 	"os"
 	"strconv"
+	"strings"
 	"sync"
 )
 
 // A "thread" safe string to anything map.
 type ConcurrentMapShared struct {
-	Id          int                     `json:"id"`
-	Items       map[string]*ShardOffset `json:"items"`
-	Enumerators map[string]int          `json:"enum"`
-	file        *os.File                `json:"-"`
+	Id         int                     `json:"id"`
+	Items      map[string]*ShardOffset `json:"items"`
+	Capacities map[string]int          `json:"enum"`
+	file       *os.File                `json:"-"`
 
 	mx sync.RWMutex // Read Write mutex, guards access to internal map.
 
@@ -22,7 +23,7 @@ type ConcurrentMapShared struct {
 }
 
 func NewConcurrentMapShared(syncDest string, id int, f *os.File) *ConcurrentMapShared {
-	return &ConcurrentMapShared{Id: id, Items: make(map[string]*ShardOffset), Enumerators: make(map[string]int), file: f, SyncDestination: syncDest}
+	return &ConcurrentMapShared{Id: id, Items: make(map[string]*ShardOffset), Capacities: make(map[string]int), file: f, SyncDestination: syncDest}
 }
 
 func (shard *ConcurrentMapShared) Lock() {
@@ -57,6 +58,18 @@ func (shard *ConcurrentMapShared) applyOffset(move, after int64) {
 	}
 }
 
+func (shard *ConcurrentMapShared) adjustCapacity(key string) {
+	fullKey := "n:" + key
+	if item, ok := shard.Capacities[fullKey]; ok {
+		item--
+		if item == 0 {
+			shard.DeleteCapacityKey(key)
+			return
+		}
+		shard.Capacities[fullKey] = item
+	}
+}
+
 func (shard *ConcurrentMapShared) Optimize() (int64, error) {
 	shard.mx.Lock()
 	defer shard.mx.Unlock()
@@ -77,15 +90,22 @@ func (shard *ConcurrentMapShared) Optimize() (int64, error) {
 	if err != nil {
 		return 0, err
 	}
+	// closing the file and flushing the data
 	shard.file.Close()
 	buffer := NewSuperBuffer(shardData)
 
-	counter := int64(0)
 	// redistribute the data
+	pos := 0
+	counter := int64(0)
 	for key, item := range shard.Items {
 		if item.Deleted {
 			buffer.Cut(item.Start, item.Length)
 			shard.applyOffset(int64(item.Length), item.Start)
+			// adjust the capacity of a set
+			pos = strings.Index(key, ":")
+			if pos >= 0 {
+				shard.adjustCapacity(key[pos+1:])
+			}
 			delete(shard.Items, key)
 			counter += int64(item.Length)
 		}
@@ -100,7 +120,6 @@ func (shard *ConcurrentMapShared) Optimize() (int64, error) {
 	shardData = nil
 	buffer = nil
 	shard.file, err = os.Open(fName)
-
 	return counter, err
 }
 
@@ -110,7 +129,6 @@ func (shard *ConcurrentMapShared) GetRandomItem() (string, *ShardOffset, error) 
 	if ln <= 0 {
 		return "", nil, errors.New("shard is empty")
 	}
-
 	s, i := shard.GetItemWithNumber(rand.Intn(len(shard.Items)))
 	return s, i, nil
 }
@@ -131,18 +149,18 @@ func (shard *ConcurrentMapShared) GetItem(id string) *ShardOffset {
 	return shard.Items[id]
 }
 
-func (shard *ConcurrentMapShared) SetEnumerator(key string, n int) {
-	shard.Enumerators["n:"+key] = n
+func (shard *ConcurrentMapShared) SetCapacityKey(key string, n int) {
+	shard.Capacities["n:"+key] = n
 }
 
-func (shard *ConcurrentMapShared) GetEnumerator(key string) int {
-	n, ok := shard.Enumerators["n:"+key]
+func (shard *ConcurrentMapShared) GetCapacityKey(key string) int {
+	n, ok := shard.Capacities["n:"+key]
 	if !ok {
 		return 0
 	}
 	return n
 }
 
-func (shard *ConcurrentMapShared) DeleteEnumerator(key string) {
-	delete(shard.Enumerators, "n:"+key)
+func (shard *ConcurrentMapShared) DeleteCapacityKey(key string) {
+	delete(shard.Capacities, "n:"+key)
 }

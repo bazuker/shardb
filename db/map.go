@@ -126,7 +126,7 @@ func (m *ConcurrentMap) RestoreByKey(key, value string, limit int) int {
 		shard.Lock()
 		kv := key + ":" + value
 		en := ":" + kv
-		length := shard.GetEnumerator(kv)
+		length := shard.GetCapacityKey(kv)
 		tempKey := ""
 		for i := length - 1; i >= 0; i-- {
 			tempKey = strconv.Itoa(i) + en
@@ -145,7 +145,7 @@ func (m *ConcurrentMap) RestoreByKey(key, value string, limit int) int {
 			}
 			i++
 		}
-		shard.SetEnumerator(kv, length+counter)
+		shard.SetCapacityKey(kv, length+counter)
 		shard.Unlock()
 	}
 	return counter
@@ -183,7 +183,7 @@ func (m *ConcurrentMap) DeleteByKey(key, value string, limit int) (deletedDests 
 		shard.Lock()
 		kv := key + ":" + value
 		en := ":" + kv
-		length := shard.GetEnumerator(kv)
+		length := shard.GetCapacityKey(kv)
 		tempKey := ""
 		for i := length - 1; i >= 0; i-- {
 			tempKey = strconv.Itoa(i) + en
@@ -203,7 +203,6 @@ func (m *ConcurrentMap) DeleteByKey(key, value string, limit int) (deletedDests 
 			}
 			i++
 		}
-		shard.SetEnumerator(kv, length-counter)
 		shard.Unlock()
 	}
 	return deletedDests
@@ -325,7 +324,7 @@ func (m *ConcurrentMap) Set(indexData []*FullDataIndex, value interface{}) (map[
 				destMap[fullKey] = pId
 			} else {
 				// Regular key
-				index := shard.GetEnumerator(fullKey)
+				index := shard.GetCapacityKey(fullKey)
 				lastAvailable := ""
 				for {
 					lastAvailable = strconv.Itoa(index) + ":" + fullKey
@@ -336,7 +335,7 @@ func (m *ConcurrentMap) Set(indexData []*FullDataIndex, value interface{}) (map[
 					}
 				}
 				shard.Items[lastAvailable] = &offset
-				shard.SetEnumerator(fullKey, index)
+				shard.SetCapacityKey(fullKey, index)
 				destMap[lastAvailable] = pId
 			}
 		}
