@@ -148,8 +148,6 @@ func RunGeneralExample() {
 	start = time.Now()
 	data, err = randCol.ScanOne(p, true)
 	checkErr(err)
-	_, err = randCol.DecodeElement(data)
-	checkErr(err)
 
 	el, err = randCol.DecodeElement(data)
 	p2 = *el.Payload.(*Person)
