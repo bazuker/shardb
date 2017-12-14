@@ -82,6 +82,18 @@ func (c *Collection) GetRandomAliveObject() (string, *Element, error) {
 	if shard == nil {
 		return "", nil, errors.New("collections does not have any shards")
 	}
+	attempts := 0
+	for len(shard.Items) <= 0 {
+		shard = c.Map.GetNextShard()
+		if shard == nil {
+			return "", nil, errors.New("collections does not have any shards")
+		}
+		attempts++
+		if attempts >= SHARD_COUNT {
+			return "", nil, errors.New("too many attempts")
+		}
+	}
+
 	key, offset, err := shard.GetRandomItem()
 	if err != nil {
 		return "", nil, err

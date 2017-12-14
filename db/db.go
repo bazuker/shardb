@@ -232,19 +232,23 @@ func (db *Database) GetTotalObjectsCount() int64 {
 	return total
 }
 
-func (db *Database) GetRandomCollection() *Collection {
+func (db *Database) GetRandomCollection() (*Collection, error) {
 	db.collectionMutex.RLock()
 	defer db.collectionMutex.RUnlock()
+	ln := len(db.collections)
+	if ln <= 0 {
+		return nil, errors.New("database has no collections")
+	}
 
-	n := rand.Intn(len(db.collections))
+	n := rand.Intn(ln)
 	i := 0
 	for _, v := range db.collections {
 		if i == n {
-			return v
+			return v, nil
 		}
 		i++
 	}
-	return nil
+	return nil, errors.New("could not pick a collection")
 }
 
 func (db *Database) AddCollection(name string) (*Collection, error) {
