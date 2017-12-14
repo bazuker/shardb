@@ -218,7 +218,7 @@ func (c *Collection) ScanN(entry CustomStructure, limit int, cacheResult bool) (
 	indexes := entry.GetDataIndex()
 	indexesString := c.StringifyDataIndex(indexes)
 	dataInterface, err := c.loadCache(indexesString)
-	if err == nil {
+	if err == nil && dataInterface != nil {
 		return dataInterface.([][]byte), nil
 	}
 	for _, ix := range indexes {
