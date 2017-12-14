@@ -127,7 +127,6 @@ func (db *Database) ScanAndLoadData(path string) error {
 						dec = nil
 						shard.file = fi
 						cm.Shared[shard.Id] = &shard
-
 						loaded++
 					}
 
@@ -146,7 +145,7 @@ func (db *Database) ScanAndLoadData(path string) error {
 					}
 					// sync path
 					if scanner.Scan() {
-						cm.SyncDestination = scanner.Text()
+						cm.SyncDestination = path + "/" + scanner.Text()
 					}
 					inFile.Close()
 					mapIndexLoaded = true
@@ -239,7 +238,6 @@ func (db *Database) GetRandomCollection() (*Collection, error) {
 	if ln <= 0 {
 		return nil, errors.New("database has no collections")
 	}
-
 	n := rand.Intn(ln)
 	i := 0
 	for _, v := range db.collections {

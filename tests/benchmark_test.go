@@ -28,6 +28,11 @@ func loadDatabase() (*db.Database, error) {
 	return db, err
 }
 
+func saveDatabase(db *db.Database) {
+	db.Optimize()
+	db.Sync()
+}
+
 func BenchmarkSearchById(b *testing.B) {
 	db, err := loadDatabase()
 	if err != nil {
@@ -56,6 +61,7 @@ func BenchmarkWriteData(b *testing.B) {
 	if err != nil {
 		b.Fatal(err)
 	}
+	defer saveDatabase(db)
 	c, _ := db.GetRandomCollection()
 	if c == nil {
 		b.Fatal(errors.New("database has no collections"))

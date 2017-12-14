@@ -22,7 +22,7 @@ func RunDeleteExample() {
 
 	if database.GetCollectionsCount() > 0 {
 		// getting a random collection
-		randCol := database.GetRandomCollection()
+		randCol, _ := database.GetRandomCollection()
 		if randCol == nil {
 			panic("database has no collections")
 		}

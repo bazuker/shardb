@@ -101,7 +101,7 @@ func RunGeneralExample() {
 	}
 
 	// getting a random collection
-	randCol := database.GetRandomCollection()
+	randCol, _ := database.GetRandomCollection()
 	if randCol == nil {
 		panic("database has no collections")
 	}

@@ -234,7 +234,6 @@ func (m *ConcurrentMap) FindByKeyInShard(shard *ConcurrentMapShared, key, value 
 			if item.Deleted {
 				continue
 			}
-
 			data, err := m.ReadAtOffset(shard, item)
 			if err != nil {
 				return nil, err
@@ -263,7 +262,6 @@ func (m *ConcurrentMap) FindByKey(key, value string, limit int) ([][]byte, error
 				if item.Deleted {
 					continue
 				}
-
 				data, err := m.ReadAtOffset(shard, item)
 				if err != nil {
 					shard.Unlock()
