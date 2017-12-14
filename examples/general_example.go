@@ -66,9 +66,9 @@ func RunGeneralExample() {
 	if database.GetCollectionsCount() <= 0 {
 		start := time.Now()
 
-		database.AddCollection("c1")
-		database.AddCollection("c2")
-		database.AddCollection("c3")
+		c1, _ := database.AddCollection("c1")
+		c2, _ := database.AddCollection("c2")
+		c3, _ := database.AddCollection("c3")
 
 		rand.Seed(time.Now().UnixNano())
 
@@ -76,9 +76,9 @@ func RunGeneralExample() {
 		threads := 4
 
 		// filling the collections with random data
-		fillUpCollection(database.GetCollection("c1"), total, threads)
-		fillUpCollection(database.GetCollection("c2"), total, threads)
-		fillUpCollection(database.GetCollection("c3"), total, threads)
+		fillUpCollection(c1, total, threads)
+		fillUpCollection(c2, total, threads)
+		fillUpCollection(c3, total, threads)
 
 		fmt.Println("Filling up the database with", total*3, "objects...")
 

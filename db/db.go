@@ -40,12 +40,6 @@ func NewDatabase(name string) *Database {
 	return &Database{name, make(map[string]*Collection), sync.RWMutex{}}
 }
 
-func createUniqueIdIndex() []*Index {
-	indexes := make([]*Index, 1)
-	indexes[0] = &Index{"id", true}
-	return indexes
-}
-
 func (db *Database) RegisterTypeName(name string, value CustomStructure) {
 	gob.RegisterName(name, value)
 }
@@ -253,9 +247,9 @@ func (db *Database) GetRandomCollection() *Collection {
 	return nil
 }
 
-func (db *Database) AddCollection(name string) error {
+func (db *Database) AddCollection(name string) (*Collection, error) {
 	if db.GetCollection(name) != nil {
-		return errors.New("collection is already exist")
+		return nil, errors.New("collection is already exist")
 	}
 
 	files := make([]*os.File, SHARD_COUNT)
@@ -264,16 +258,17 @@ func (db *Database) AddCollection(name string) error {
 	for i := 0; i < SHARD_COUNT; i++ {
 		f, err := os.Create(path + "/shard_" + strconv.Itoa(i) + ".gobs")
 		if err != nil {
-			return errors.New("failed to create a shard")
+			return nil, errors.New("failed to create a shard")
 		}
 		files[i] = f
 	}
 
+	c := NewCollection(path, name, NewConcurrentMap(path, files), make(map[string]*int))
 	db.collectionMutex.Lock()
-	db.collections[name] = NewCollection(path, name, NewConcurrentMap(path, files), make(map[string]*int))
+	db.collections[name] = c
 	db.collectionMutex.Unlock()
 
-	return nil
+	return c, nil
 }
 
 func (db *Database) GetCollection(name string) *Collection {

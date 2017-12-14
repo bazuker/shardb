@@ -91,6 +91,17 @@ func (c *Collection) GetRandomAliveObject() (string, *Element, error) {
 	return key, e, err
 }
 
+func (c *Collection) StringifyDataIndex(index []*FullDataIndex) (result string) {
+	ln := len(index)
+	for i, ix := range index {
+		result += ix.Field + ":" + ix.Data
+		if i < ln {
+			result += ";"
+		}
+	}
+	return result
+}
+
 func (c *Collection) DecodeElement(data []byte) (*Element, error) {
 	e := new(Element)
 	return e, gob.NewDecoder(bytes.NewReader(data)).Decode(e)

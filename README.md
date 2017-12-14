@@ -21,8 +21,7 @@ if err != nil {
     fmt.Println(err)
 }
 if database.GetCollectionsCount() <= 0 {
-    database.AddCollection("some_collection")
-    c := database.GetCollection("some_collection")
+    c, _ := database.AddCollection("some_collection")
     p := Person("Login", "Name", 20)
     err = c.Write(&p)
     if err != nil {
