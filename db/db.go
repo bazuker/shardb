@@ -275,7 +275,6 @@ func (db *Database) GetCollection(name string) *Collection {
 	db.collectionMutex.RLock()
 	c := db.collections[name]
 	db.collectionMutex.RUnlock()
-
 	return c
 }
 

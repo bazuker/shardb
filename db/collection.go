@@ -1,11 +1,14 @@
 package db
 
 import (
+	"bufio"
 	"bytes"
+	"compress/gzip"
 	"encoding/gob"
 	"encoding/json"
 	"errors"
 	"github.com/allegro/bigcache"
+	"io/ioutil"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -194,23 +197,30 @@ func (c *Collection) Write(payload CustomStructure) error {
 	return nil
 }
 
-func (c *Collection) FindById(id string) ([]byte, error) {
+func (c *Collection) FindById(id string, cacheResult bool) ([]byte, error) {
 	idKey := "id:" + id
-	data, err := c.Cache.Get(idKey)
-	if err == nil {
-		return data, nil
+	dataInterface, err := c.loadCache(idKey)
+	if err == nil && dataInterface != nil {
+		return dataInterface.([]byte), nil
 	}
 	shard := c.getShardByKey(idKey)
-	data, err = c.Map.FindById(shard, id)
+	data, err := c.Map.FindById(shard, id)
 	if err != nil {
 		return nil, err
 	}
-	c.Cache.Set("id:"+id, data)
+	if cacheResult {
+		c.cache("id:"+id, data)
+	}
 	return data, nil
 }
 
-func (c *Collection) ScanN(entry CustomStructure, limit int) ([][]byte, error) {
+func (c *Collection) ScanN(entry CustomStructure, limit int, cacheResult bool) ([][]byte, error) {
 	indexes := entry.GetDataIndex()
+	indexesString := c.StringifyDataIndex(indexes)
+	dataInterface, err := c.loadCache(indexesString)
+	if err == nil {
+		return dataInterface.([][]byte), nil
+	}
 	for _, ix := range indexes {
 		if ix.Data == "" {
 			continue
@@ -220,24 +230,34 @@ func (c *Collection) ScanN(entry CustomStructure, limit int) ([][]byte, error) {
 			if err != nil {
 				return nil, err
 			}
+			if cacheResult {
+				c.cache(indexesString, data)
+			}
 			return [][]byte{data}, nil
 		}
-		return c.scanByIndex(entry, ix, limit)
+		dataSet, err := c.scanByIndex(entry, ix, limit)
+		if err != nil {
+			return nil, err
+		}
+		if cacheResult {
+			c.cache(indexesString, dataSet)
+		}
+		return dataSet, nil
 	}
 	return nil, errors.New("no matching data")
 }
 
-func (c *Collection) ScanOne(entry CustomStructure) ([]byte, error) {
-	data, err := c.ScanN(entry, 1)
+func (c *Collection) ScanOne(entry CustomStructure, cacheResult bool) ([]byte, error) {
+	data, err := c.ScanN(entry, 1, cacheResult)
 	if err != nil {
 		return nil, err
 	}
 	return data[0], nil
 }
 
-func (c *Collection) Scan(entry CustomStructure) ([][]byte, error) {
+func (c *Collection) Scan(entry CustomStructure, cacheResult bool) ([][]byte, error) {
 	const limit = 1000
-	return c.ScanN(entry, limit)
+	return c.ScanN(entry, limit, cacheResult)
 }
 
 func (c *Collection) getShardByKey(key string) *ConcurrentMapShared {
@@ -333,4 +353,41 @@ func (c *Collection) iterateIndexes(entry CustomStructure, limit int, ucb Unique
 		}
 	}
 	return counter, nil
+}
+
+func (c *Collection) cache(key string, dataInterface interface{}) error {
+	var data bytes.Buffer
+	var compressedBuf bytes.Buffer
+	writer := bufio.NewWriter(&compressedBuf)
+
+	enc := gob.NewEncoder(&data)
+	err := enc.Encode(dataInterface)
+	if err != nil {
+		return err
+	}
+
+	gzipw, _ := gzip.NewWriterLevel(writer, gzip.BestSpeed)
+	_, err = gzipw.Write(data.Bytes())
+	gzipw.Close()
+	return c.Cache.Set(key, compressedBuf.Bytes())
+}
+
+func (c *Collection) loadCache(key string) (interface{}, error) {
+	data, err := c.Cache.Get(key)
+	if err != nil {
+		return nil, err
+	}
+	buf := bytes.NewBuffer(data)
+
+	reader, err := gzip.NewReader(buf)
+	if err != nil {
+		return nil, err
+	}
+	defer reader.Close()
+
+	decompressedData, err := ioutil.ReadAll(reader)
+	if err != nil {
+		return nil, err
+	}
+	return gob.NewDecoder(bytes.NewReader(decompressedData)), nil
 }

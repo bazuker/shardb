@@ -118,7 +118,7 @@ func RunGeneralExample() {
 	// scan all
 	p2 := Person{Age: p.Age}
 	start = time.Now()
-	results, err := randCol.Scan(&p2)
+	results, err := randCol.Scan(&p2, true)
 	fmt.Println("Search (Scan) took", time.Now().Sub(start))
 	checkErr(err)
 
@@ -134,7 +134,7 @@ func RunGeneralExample() {
 	// single scan
 	fmt.Println()
 	start = time.Now()
-	data, err := randCol.ScanOne(p)
+	data, err := randCol.ScanOne(p, true)
 	checkErr(err)
 
 	el, err := randCol.DecodeElement(data)
@@ -143,7 +143,18 @@ func RunGeneralExample() {
 
 	fmt.Println("Search (Scan) took", time.Now().Sub(start))
 	fmt.Println("Result", p2.Age)
+	// perform again (now reads from cache)
+	fmt.Println()
+	start = time.Now()
+	data, err = randCol.ScanOne(p, true)
+	checkErr(err)
+	_, err = randCol.DecodeElement(data)
+	checkErr(err)
 
-	fmt.Print("Press enter to exit...")
-	fmt.Scanln()
+	el, err = randCol.DecodeElement(data)
+	p2 = *el.Payload.(*Person)
+	checkErr(err)
+
+	fmt.Println("Search (Scan) took", time.Now().Sub(start))
+	fmt.Println("Result", p2.Age)
 }

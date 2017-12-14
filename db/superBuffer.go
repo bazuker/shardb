@@ -13,6 +13,7 @@ type SuperBufferInterface interface {
 	io.Reader
 	io.Seeker
 	io.Closer
+	io.Writer
 	Cutter
 }
 
