@@ -13,12 +13,17 @@ import (
 	"strings"
 	"sync"
 	"time"
+	"math"
 )
 
-const COLLECTION_DIR_NAME = "collections"
+const (
+	COLLECTION_DIR_NAME = "collections"
+	DB_VERSION 			= 1
+)
 
 type Database struct {
 	Name            string                 `json:"name"`
+	Version			int				   	   `json:"version"`
 	collections     map[string]*Collection `json:"-"`
 	collectionMutex sync.RWMutex           `json:"-"`
 }
@@ -37,7 +42,7 @@ func NewDatabase(name string) *Database {
 
 	ProfileSystemMemory()
 
-	return &Database{name, make(map[string]*Collection), sync.RWMutex{}}
+	return &Database{name, DB_VERSION, make(map[string]*Collection), sync.RWMutex{}}
 }
 
 func (db *Database) RegisterTypeName(name string, value CustomStructure) {
@@ -63,6 +68,27 @@ func (db *Database) Optimize() (n int64, err error) {
 	return n, err
 }
 
+// locate the header file (.shardb)
+func (db *Database) LocateDatabase(path string) (string, error) {
+	prefix := path
+	if path == "" {
+		prefix = "./"
+	}
+	files, err := ioutil.ReadDir(prefix)
+	if err != nil {
+		return "", err
+	}
+	for _, f := range files {
+		if !f.IsDir() && strings.HasSuffix(f.Name(), ".shardb") {
+			if path == "" {
+				return f.Name(), nil
+			}
+			return prefix + "\\" + f.Name(), nil
+		}
+	}
+	return "", errors.New("database header not found")
+}
+
 // load the database
 func (db *Database) ScanAndLoadData(path string) error {
 	ln := len(path)
@@ -70,8 +96,32 @@ func (db *Database) ScanAndLoadData(path string) error {
 		path += "\\"
 	}
 
+	// Locate the header and compare the version of the database
+	headerFilename, err := db.LocateDatabase(path)
+	if err != nil {
+		return errors.New("failed to locate the header due " + err.Error())
+	}
+	headerData, err := ioutil.ReadFile(headerFilename)
+	if err != nil {
+		return errors.New("failed to load the header due " + err.Error())
+	}
+	header := new(Database)
+	err = json.Unmarshal(headerData, &header)
+	if err != nil {
+		return errors.New("failed to unmarshal the header due " + err.Error())
+	}
+	// Compare the version now
+	vdif := int(math.Abs(float64(db.Version - header.Version)))
+	if vdif != 0 {
+		// if the version of the file is below the major release, then problems may occur
+		if vdif >= 10 {
+			return errors.New("old database version")
+		}
+		log.Println("WARNING! Attempt to load the dataset with a different version", header.Version, "( current", db.Version, ")")
+	}
+
 	fullPath := path + COLLECTION_DIR_NAME
-	_, err := os.Stat(fullPath)
+	_, err = os.Stat(fullPath)
 	if os.IsNotExist(err) {
 		return errors.New("collections folder does not exist")
 	}
