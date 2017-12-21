@@ -6,7 +6,7 @@ There are two types of primary keys: unique and not.
 
 <b>Unique</b> key must be unique across the collection. 
 Complexity of the search based a unique key is <b>O(2)</b> 
-(taking as a fact that accessing the map is a constant time <i>O(1)</i>)
+(taking as a fact that accessing the map is a constant time <b>O(1)</b>)
 
 <b>NOT unique</b> key may have duplicates but when the search is performed,
 complexity is <b>O(2+N)</b> where N is amount of records to return.
