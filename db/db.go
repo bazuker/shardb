@@ -7,23 +7,23 @@ import (
 	"errors"
 	"io/ioutil"
 	"log"
+	"math"
 	"math/rand"
 	"os"
 	"strconv"
 	"strings"
 	"sync"
 	"time"
-	"math"
 )
 
 const (
 	COLLECTION_DIR_NAME = "collections"
-	DB_VERSION 			= 1
+	DB_VERSION          = 1
 )
 
 type Database struct {
 	Name            string                 `json:"name"`
-	Version			int				   	   `json:"version"`
+	Version         int                    `json:"version"`
 	collections     map[string]*Collection `json:"-"`
 	collectionMutex sync.RWMutex           `json:"-"`
 }
@@ -202,7 +202,7 @@ func (db *Database) ScanAndLoadData(path string) error {
 
 					// loading the collection's description
 				} else if f.Name() == cNameExt {
-					data, err := NewCompressedPackage(collectionPath + "/" + cNameExt).Load()
+					data, err := NewCompressedPackage(collectionPath+"/"+cNameExt, nil).Load()
 					if err != nil {
 						return err
 					}

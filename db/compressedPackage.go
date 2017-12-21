@@ -2,19 +2,19 @@ package db
 
 import (
 	"bytes"
-	"os"
 	"compress/gzip"
 	"io/ioutil"
+	"os"
 )
 
 type CompressedPackage struct {
-	name string
-	data []byte
+	name             string
+	data             []byte
 	compressionLevel int
 }
 
-func NewCompressedPackage(name string) *CompressedPackage {
-	return &CompressedPackage{name, nil, gzip.BestCompression}
+func NewCompressedPackage(name string, data []byte) *CompressedPackage {
+	return &CompressedPackage{name, data, gzip.BestCompression}
 }
 
 func (p *CompressedPackage) SetData(data []byte) {

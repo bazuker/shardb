@@ -50,19 +50,15 @@ func fillUpCollection(c *db.Collection, total, threads int) {
 func RunGeneralExample() {
 	database := db.NewDatabase("test")
 	InitCustomTypes(database)
-
 	fmt.Println("Scanning and loading the data...")
 	start := time.Now()
 	err := database.ScanAndLoadData("")
 	if err != nil {
 		fmt.Println("Failed to scan and load the data", err)
 	}
-
 	fmt.Println("After loading attempt database now contains", database.GetCollectionsCount(),
 		"collections and", database.GetTotalObjectsCount(), "objects")
-
 	syncRequired := false
-
 	if database.GetCollectionsCount() <= 0 {
 		start := time.Now()
 
@@ -89,7 +85,6 @@ func RunGeneralExample() {
 	} else {
 		fmt.Println("Database loading took", time.Now().Sub(start))
 	}
-
 	if syncRequired {
 		start = time.Now()
 		// save to the disk
@@ -99,7 +94,6 @@ func RunGeneralExample() {
 			panic(err)
 		}
 	}
-
 	// getting a random collection
 	randCol, _ := database.GetRandomCollection()
 	if randCol == nil {
@@ -114,14 +108,12 @@ func RunGeneralExample() {
 	p := element.Payload.(*Person)
 	fmt.Println("Random object", key, p)
 	checkErr(err)
-
 	// scan all
 	p2 := Person{Age: p.Age}
 	start = time.Now()
 	results, err := randCol.Scan(&p2, true)
 	fmt.Println("Search (Scan) took", time.Now().Sub(start))
 	checkErr(err)
-
 	resultsLen := len(results)
 	fmt.Println("Results in set:", resultsLen)
 	for i := 0; i < resultsLen; i++ {
@@ -140,7 +132,6 @@ func RunGeneralExample() {
 	el, err := randCol.DecodeElement(data)
 	p2 = *el.Payload.(*Person)
 	checkErr(err)
-
 	fmt.Println("Search (Scan) took", time.Now().Sub(start))
 	fmt.Println("Result", p2.Age)
 	// perform again (now reads from cache)
@@ -148,11 +139,9 @@ func RunGeneralExample() {
 	start = time.Now()
 	data, err = randCol.ScanOne(p, true)
 	checkErr(err)
-
 	el, err = randCol.DecodeElement(data)
 	p2 = *el.Payload.(*Person)
 	checkErr(err)
-
 	fmt.Println("Search (Scan) took", time.Now().Sub(start))
 	fmt.Println("Result", p2.Age)
 }

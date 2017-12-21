@@ -143,8 +143,7 @@ func (c *Collection) Sync() (err error) {
 	if err != nil {
 		return err
 	}
-	p := NewCompressedPackage(c.SyncDestination + "/" + c.Name + ".json.gzip")
-	p.SetData(data)
+	p := NewCompressedPackage(c.SyncDestination+"/"+c.Name+".json.gzip", data)
 	return p.Save()
 }
 
@@ -221,7 +220,7 @@ func (c *Collection) FindById(id string, cacheResult bool) ([]byte, error) {
 		return nil, err
 	}
 	if cacheResult {
-		c.cache("id:"+id, data)
+		c.cache(idKey, data)
 	}
 	return data, nil
 }
@@ -371,13 +370,11 @@ func (c *Collection) cache(key string, dataInterface interface{}) error {
 	var data bytes.Buffer
 	var compressedBuf bytes.Buffer
 	writer := bufio.NewWriter(&compressedBuf)
-
 	enc := gob.NewEncoder(&data)
 	err := enc.Encode(dataInterface)
 	if err != nil {
 		return err
 	}
-
 	gzipw, _ := gzip.NewWriterLevel(writer, gzip.BestSpeed)
 	_, err = gzipw.Write(data.Bytes())
 	gzipw.Close()
@@ -390,13 +387,11 @@ func (c *Collection) loadCache(key string) (interface{}, error) {
 		return nil, err
 	}
 	buf := bytes.NewBuffer(data)
-
 	reader, err := gzip.NewReader(buf)
 	if err != nil {
 		return nil, err
 	}
 	defer reader.Close()
-
 	decompressedData, err := ioutil.ReadAll(reader)
 	if err != nil {
 		return nil, err
