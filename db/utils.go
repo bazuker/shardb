@@ -3,15 +3,14 @@ package db
 import (
 	"bytes"
 	"encoding/gob"
-	"github.com/cloudfoundry/gosigar"
+	"github.com/shirou/gopsutil/mem"
 )
 
 var (
-	mem  = sigar.Mem{}
-	swap = sigar.Swap{}
-
-	freeMem uint64
-	memCap  uint64
+	virtual      *mem.VirtualMemoryStat
+	mamAvailable uint64
+	memCapacity  uint64
+	memUsed      uint64
 )
 
 func toMegabytes(val uint64) uint64 {
@@ -19,19 +18,26 @@ func toMegabytes(val uint64) uint64 {
 }
 
 func GetFreeMemory() uint64 {
-	return freeMem
+	return mamAvailable
 }
 
-func GerMemoryCapacity() uint64 {
-	return memCap
+func GetUsedMemory() uint64 {
+	return memUsed
 }
 
-func ProfileSystemMemory() {
-	mem.Get()
-	swap.Get()
+func GetMemoryCapacity() uint64 {
+	return memCapacity
+}
 
-	freeMem = toMegabytes(mem.Total - mem.ActualUsed)
-	memCap = toMegabytes(mem.Total)
+func ProfileSystemMemory() (err error) {
+	virtual, err = mem.VirtualMemory()
+	if err != nil {
+		return err
+	}
+	mamAvailable = toMegabytes(virtual.Available)
+	memCapacity = toMegabytes(virtual.Total)
+	memUsed = toMegabytes(virtual.Used)
+	return
 }
 
 func EncodeGob(i interface{}) ([]byte, error) {

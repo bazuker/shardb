@@ -12,7 +12,7 @@ import (
 	"sync"
 )
 
-var SHARD_COUNT = 32
+var SHARD_COUNT = 1024
 
 // A "thread" safe map of type string:Anything.
 // To avoid lock bottlenecks this map is dived to several (SHARD_COUNT) map shards.
@@ -42,6 +42,7 @@ func (cm *ConcurrentMap) Flush() error {
 		shard.file.Close()
 		f, err := os.Open(shard.SyncDestination + "/shard_" + strconv.Itoa(shard.Id) + ".gobs")
 		if err != nil {
+			shard.Unlock()
 			return err
 		}
 		shard.file = f
