@@ -1,11 +1,11 @@
 # shardb v0.1
 Fast and flexible database where increase in amount of data does not affect the search speed.
 
-Search can be performed based on primary keys for every type of structure.
+Search can be performed based on the primary keys for every type of structure.
 There are two types of primary keys: unique and not.
 
 <b>Unique</b> key must be unique across the collection. 
-Complexity of the search based a unique key is <b>O(2)</b> 
+Complexity of the search based on a unique key is <b>O(2)</b> 
 (taking as a fact that accessing the map is a constant time <b>O(1)</b>)
 
 <b>NOT unique</b> key may have duplicates but when the search is performed,
