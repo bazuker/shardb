@@ -23,7 +23,7 @@ func loadDatabase() (*db.Database, error) {
 	db := db.NewDatabase("test")
 	db.RegisterType(&ExamplePerson{})
 
-	err := db.ScanAndLoadData("C:\\Users\\furm0008\\GoglandProjects\\src\\shardb")
+	err := db.ScanAndLoadData("shardb")
 	db.AddCollection("benchmarks")
 	return db, err
 }
