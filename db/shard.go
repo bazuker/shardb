@@ -119,7 +119,7 @@ func (shard *ConcurrentMapShared) Optimize() (int64, error) {
 
 	shardData = nil
 	buffer = nil
-	shard.file, err = os.Open(fName)
+	shard.file, err = os.OpenFile(fName, os.O_RDWR, os.ModePerm)
 	return counter, err
 }
 

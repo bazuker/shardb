@@ -12,6 +12,7 @@ import (
 	"sync"
 )
 
+// Every collection will be split along %SHARD_COUNT% files
 var SHARD_COUNT = 32
 
 // A "thread" safe map of type string:Anything.
@@ -40,7 +41,7 @@ func (cm *ConcurrentMap) Flush() error {
 	for _, shard := range cm.Shared {
 		shard.Lock()
 		shard.file.Close()
-		f, err := os.Open(shard.SyncDestination + "/shard_" + strconv.Itoa(shard.Id) + ".gobs")
+		f, err := os.OpenFile(shard.SyncDestination+"/shard_"+strconv.Itoa(shard.Id)+".gobs", os.O_RDWR, os.ModePerm)
 		if err != nil {
 			shard.Unlock()
 			return err

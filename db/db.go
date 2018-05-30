@@ -157,7 +157,7 @@ func (db *Database) ScanAndLoadData(path string) error {
 				if strings.HasPrefix(fName, "shard_") {
 					// loading the shard main data
 					if strings.HasSuffix(fName, ".gobs") {
-						fi, err := os.Open(collectionPath + "/" + fName)
+						fi, err := os.OpenFile(collectionPath+"/"+fName, os.O_RDWR, os.ModePerm)
 						if err != nil {
 							return errors.New("collection (" + fName + ") shard (" + fName + ") is unavailable")
 						}

@@ -68,8 +68,8 @@ func RunGeneralExample() {
 
 		rand.Seed(time.Now().UnixNano())
 
-		total := 10000
-		threads := 4
+		total := 100000
+		threads := 3
 
 		// filling the collections with random data
 		fillUpCollection(c1, total, threads)
