@@ -1,5 +1,5 @@
 # shardb v0.1
-Fast and flexible database where increase in amount of data does not affect the search speed.
+![alt text](https://github.com/Kisulken/shardb/blob/master/description.jpg?raw=true)
 
 Search can be performed based on the primary keys for every type of structure.
 There are two types of primary keys: unique and not.
