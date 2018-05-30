@@ -1,4 +1,5 @@
-# shardb v0.1
+# Shardb v 0.1
+
 ![alt text](https://github.com/Kisulken/shardb/blob/master/description.jpg?raw=true)
 
 Search can be performed based on the primary keys for every type of structure.
