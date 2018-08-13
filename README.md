@@ -1,5 +1,7 @@
 # Shardb v 0.1
 
+Disclaimer: I created this code during my time in college for the purpose of extending my knowledge in databases. It is not intended to be used in a production environment.
+
 ![alt text](https://github.com/Kisulken/shardb/blob/master/description.jpg?raw=true)
 
 Search can be performed based on the primary keys for every type of structure.
